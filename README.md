@@ -8,6 +8,13 @@ An open source Agent Skill for coordinating coding agents in tmux.
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | [`tmux-agent-teams`](skills/tmux-agent-teams/) | Coordinate Claude Code and Codex workers in tmux panes with mailbox-based result collection. |
 
+## Branches
+
+| Branch     | Supported agent CLIs           |
+| ---------- | ------------------------------ |
+| `main`     | Claude Code and Codex.         |
+| `with-agy` | Claude Code, Codex, and `agy`. |
+
 ## Install
 
 List the skills in this repository:
