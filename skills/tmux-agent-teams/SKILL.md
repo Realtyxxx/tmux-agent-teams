@@ -1,6 +1,6 @@
 ---
 name: tmux-agent-teams
-description: 'Use when coordinating multiple AI agent CLIs (claude, codex) running in tmux panes as a team on one task — dispatching subtasks, scheduling parallel work, collecting results — or when hand-rolled send-keys/capture-pane orchestration is flaky (captured "thinking..." instead of the answer, answers scrolled off screen, prompts mangled by ; or -, blind sleep races). Triggers: 多个 agent 协作, tmux 面板编排, agent team, multi-agent tmux.'
+description: 'Use when coordinating multiple AI agent CLIs (claude, codex, agy) running in tmux panes as a team on one task — dispatching subtasks, scheduling parallel work, collecting results — or when hand-rolled send-keys/capture-pane orchestration is flaky (captured "thinking..." instead of the answer, answers scrolled off screen, prompts mangled by ; or -, blind sleep races). Triggers: 多个 agent 协作, tmux 面板编排, agent team, multi-agent tmux.'
 ---
 
 # tmux Agent Teams
@@ -23,27 +23,26 @@ when the user explicitly asks to refresh.
 
 ## Team Design & Confirmation (MANDATORY first step)
 
-The roster is fixed to two CLIs — never use others. If a `model-catalog.json`
-exists next to this file, read it before designing the roster; this package
-ships without one — configure it on the target server, or run an explicit
-refresh, before relying on cached model validation. Normal team startup must
-not query live model catalogs. After the user confirms the roster, launch in
-full-access mode by default:
+The roster is fixed to three CLIs — never use others. Read
+[`model-catalog.json`](model-catalog.json) before designing the roster. Normal
+team startup must not query live model catalogs. After the user confirms the
+roster, launch in full-access mode by default:
 
 | CLI    | Full-access launch (default)                               | Session-scoped model override |
 | ------ | ---------------------------------------------------------- | ----------------------------- |
 | claude | `command claude --dangerously-skip-permissions`            | `--model <m> --effort <e>`    |
 | codex  | `command codex --dangerously-bypass-approvals-and-sandbox` | `-m <m> -c '<effort config>'` |
+| agy    | `command agy --dangerously-skip-permissions`               | `--model <m>`                 |
 
 Before creating any session, launching any CLI, or dispatching anything:
 
-1. **Load the model cache** (if present) and follow the cache decision flow
-   below. Never refresh automatically — on any cache problem, ask the user. A
-   refresh runs only when the user explicitly requests it, in exactly one
-   same-harness subagent (never the lead, never a tmux team seat).
+1. **Load the model cache** and follow the cache decision flow below. Never
+   refresh automatically — on any cache problem, ask the user. A refresh runs
+   only when the user explicitly requests it, in exactly one same-harness
+   subagent (never the lead, never a tmux team seat).
 2. **Design the team**: seats, role per seat, CLI + model per seat,
    orchestration pattern. If the user did not specify a model, use `CLI default`
-   (omit all model and effort flags).
+   for claude/codex and the cached Gemini preference below for agy.
 3. **Present the design to the user and get confirmation** of the roster. A
    default model is confirmed as part of this single design review; do not ask a
    separate model question merely because the user omitted it.
@@ -61,43 +60,50 @@ A subagent that cannot reach the user must return the team design as its final m
 ## Cached Model Selection
 
 Model catalogs and defaults can vary by CLI version, account, provider, and
-workspace. `model-catalog.json` (sibling of this file) is the last-known-good
-catalog. Use it as-is regardless of age — the cache is refreshed **only on
-explicit user request**, never automatically on staleness, TTL, startup, a
-missing entry, or a model miss. Do not call any CLI, including `--version`,
-merely because this skill was loaded or a new team is being created.
+workspace. `model-catalog.json` is the last-known-good catalog. Use it as-is
+regardless of age — the cache is refreshed **only on explicit user request**,
+never automatically on staleness, TTL, startup, a missing entry, or a model
+miss. Do not call any CLI, including `--version`, merely because this skill was
+loaded or a new team is being created.
 
 ```mermaid
 flowchart LR
     A[Read model-catalog.json] --> B{User explicitly asked to refresh?}
     B -->|Yes| C[One refresh subagent; wait]
-    B -->|No| D{User named a model AND cache usable?}
-    D -->|Yes| F[Validate against cache]
-    D -->|No, CLI default suffices| E[Omit model flags; no cache needed]
-    D -->|No, cache needed but unusable| G[Ask the user — never refresh automatically]
+    B -->|No| D{Usable entry for each required CLI?}
+    D -->|Yes| F[Use cache as-is, any age]
+    D -->|No| G[Ask the user — never refresh automatically]
     C --> F
 ```
 
-| CLI    | Team default when unspecified                | One-session launch override                        |
-| ------ | -------------------------------------------- | -------------------------------------------------- |
-| claude | CLI default; omit `--model` and effort flags | `--model <model> --effort <level>`                 |
-| codex  | CLI default; omit `-m` and effort config     | `-m <model> -c 'model_reasoning_effort="<level>"'` |
+| CLI    | Cached team default when unspecified                   | One-session launch override                        |
+| ------ | ------------------------------------------------------ | -------------------------------------------------- |
+| claude | CLI default; omit `--model` and effort flags           | `--model <model> --effort <level>`                 |
+| codex  | CLI default; omit `-m` and effort config               | `-m <model> -c 'model_reasoning_effort="<level>"'` |
+| agy    | Cached `team_default_model`; pass it through `--model` | `--model "<exact model name>"`                     |
 
 Apply this decision flow:
 
 1. If the user explicitly asked to refresh, start one refresh subagent, wait for
    it, then use the updated cache.
-2. If the user did not name a model, use the CLI default: omit all model and
-   effort flags. No cache lookup is required for this path — a missing
-   `model-catalog.json` does not block a CLI-default launch.
-3. If the user explicitly named a model, validate it against the cache. If the
-   cache is missing, invalid, has no usable entry, or misses that model, **ask
-   the user** (offer to refresh); do not refresh silently. Absence from
-   Claude's `partial` catalog is unknown, not proof that the model is
-   unavailable.
-4. Use the cache regardless of its age; show its `refreshed_at` date in the
+2. If the cache is missing, invalid, or has no usable entry for a required CLI,
+   **ask the user** how to proceed (refresh now, or name a model). Never refresh
+   automatically.
+3. If the user explicitly named a model, validate it against the cache. On a
+   cache miss or ambiguity, ask the user (offer to refresh); do not refresh
+   silently. Absence from Claude's `partial` catalog is unknown, not proof that
+   the model is unavailable.
+4. If the user did not name a model, use the CLI default for claude and codex:
+   omit all model and effort flags. For agy, select `Gemini 3.5 Flash (Medium)`
+   when that exact cached entry exists and pass it through `--model`.
+5. If agy's preferred model is unavailable, choose another cached Gemini entry
+   deterministically: first another `Gemini 3.5 Flash` entry, then the first
+   other Gemini entry. Show the exact choice in the roster. If no Gemini entry
+   is available, ask the user (offer to refresh) instead of silently switching
+   model families.
+6. Use the cache regardless of its age; show its `refreshed_at` date in the
    roster so the user can decide whether to request a refresh.
-5. For an existing pane, preserve its active model. Do not silently restart or
+7. For an existing pane, preserve its active model. Do not silently restart or
    switch it.
 
 ## Model Cache Refresh — One Subagent Only
@@ -110,8 +116,7 @@ not a roster seat, so it does not need team confirmation.
 
 Give that subagent this contract:
 
-1. Read this skill and the current `model-catalog.json` completely (create it
-   if absent).
+1. Read this skill and the current `model-catalog.json` completely.
 2. From the outer shell, run only the read-only discovery commands below. Run
    version commands only inside this refresh task.
 
@@ -119,6 +124,7 @@ Give that subagent this contract:
    | ------ | -------------------------------------------------------------------------------------- |
    | claude | `command claude --version`; `command claude --help`                                    |
    | codex  | `command codex --version`; `command codex debug models`; `command codex doctor --json` |
+   | agy    | `command agy --version`; `command agy models`                                          |
 
 3. Filter command output inside the subagent. Store only model identifiers or
    labels, the effective default when discoverable, CLI version, source
@@ -139,14 +145,14 @@ If no same-harness subagent is available, keep using a usable stale cache and
 disclose its date. If the cache is unusable, ask the user instead of moving the
 slow discovery work back into the lead's startup path.
 
-Never edit `~/.claude` or `~/.codex` configuration files as part of model
-selection or testing. Prefer launch flags because their scope is explicit and
-isolated to the new session. In the tested CLIs, Codex `/model` changed
-persistent user settings; therefore automation must not use `/model` for model
-switching. Claude offers a session-only choice in `/model`, but launch flags
-remain the uniform team policy. Claude's non-interactive help does not expose
-its full catalog; do not launch a fresh agent merely to enumerate it when using
-the CLI default is sufficient.
+Never edit `~/.claude`, `~/.codex`, or `~/.gemini` configuration files as part
+of model selection or testing. Prefer launch flags because their scope is
+explicit and isolated to the new session. In the tested CLIs, Codex and agy
+`/model` changed persistent user settings; therefore automation must not use
+`/model` for model switching. Claude offers a session-only choice in `/model`,
+but launch flags remain the uniform team policy. Claude's non-interactive help
+does not expose its full catalog; do not launch a fresh agent merely to
+enumerate it when using the CLI default is sufficient.
 
 Use `command <cli>` for discovery and launch so shell aliases do not inject or
 duplicate flags. This matters when a user alias already includes full-access
@@ -157,8 +163,6 @@ arguments.
 | Command                                         | Does                                                                       |
 | ----------------------------------------------- | -------------------------------------------------------------------------- |
 | `init [name] [task]`                            | create `$TEAM_DIR`; optionally set window title to `🤖 TEAM: name \| task` |
-| `ui <session>`                                  | pane-id borders + status bar, scoped to the session                        |
-| `layout <window> [main-width]`                  | lead left (default `33%`), seats split evenly right                        |
 | `register <name> <pane-id>`                     | verify pane exists, title it, record it                                    |
 | `dispatch <name> <task-id> '<one-line prompt>'` | send task; auto-appends the result-file contract                           |
 | `wait <timeout-s> <id>...`                      | poll result files for `DONE <id>`                                          |
@@ -212,12 +216,41 @@ flowchart TD
     B -->|No| B2[new-session for the team]
 ```
 
-Then continue with the window title setup and Protocol below.
+Then continue with the layout setup and Protocol below.
+
+## Standard Window Layout
+
+Create the leader pane on the left at one-third width and use the right
+two-thirds for equal-height worker panes.
+
+```mermaid
+flowchart LR
+    L["Leader<br/>left 1/3<br/>full height"]
+    subgraph R["Workers · right 2/3"]
+        direction TB
+        W1["Worker 1"]
+        W2["Worker 2"]
+        W3["Worker 3"]
+    end
+    L --- R
+```
+
+1. From the leader pane, create the right worker area:
+
+   ```bash
+   tmux split-window -h -p 67 -c "#{pane_current_path}"
+   ```
+
+2. Split the right area vertically for additional workers:
+
+   ```bash
+   tmux split-window -v -c "#{pane_current_path}"
+   ```
 
 ## Window Title Management
 
-When a team starts, set the tmux window title so the team is identifiable in
-`tmux list-windows` and the status bar.
+When a team starts, set the tmux window title so the team identity and current
+task are visible in `tmux list-windows` and the status bar.
 
 **Title format:** `🤖 TEAM: <team-name> | <task-summary>`
 
@@ -233,8 +266,9 @@ Pass the team name and task summary to `init`:
 teamctl.sh init "refactor-squad" "migrate auth module to JWT"
 ```
 
-The command persists both values in `$TEAM_DIR/team-meta.env` and disables
-`automatic-rename`. Update the title during the session with:
+The command persists both values in `$TEAM_DIR/team-meta.env`, restores them on
+later invocations, and disables `automatic-rename`. Update the title during the
+session with:
 
 ```bash
 teamctl.sh set-title "refactor-squad" "phase 2: integration tests"
@@ -248,19 +282,10 @@ Choose a concise team name and keep the task summary to eight words or fewer.
    - **If you are already running inside tmux, orchestrate from the current window** — but first isolate yourself: `tmux break-pane` your own pane out into a new window so the lead sits alone and later seat keystrokes can never land on it (`display-message -p '#{pane_id}'` to confirm which pane is yours before breaking). Only then create team seats (new panes/windows) and register them.
    - **If you are not inside tmux**, prefer a dedicated session: `tmux new-session -d -s team-x '<agent-cli>'`.
    - To drive pre-existing panes, `list-panes -a` first, register only confirmed panes, and confirm with the user — a wrong target types into their live work.
-   - **Set the window title** by passing the team name and task summary to
-     `init`: `teamctl.sh init "<team-name>" "<task-summary>"`.
-   - **Layout & pane UI (dedicated team session/window only).** After creating
-     the session run `teamctl.sh ui <session>` (stable `#{pane_id}` +
-     registered `#{pane_title}` in each pane border; status bar shows current
-     pane and newest paste buffer — all scoped to the team session, never `-g`
-     global, so the user's own tmux config is untouched). Arrange seats with
-     `teamctl.sh layout <window>`: the lead/orchestrator pane takes the left
-     `33%` (`main-pane-width` + `main-vertical`) and all seat panes split
-     evenly in the right column. Create seats with plain `split-window -t
-<window>` and re-run `layout` after every new seat to re-even the column.
-     Never apply `ui`/`layout` to a window that contains the user's
-     pre-existing panes.
+   - **Set the window title** with
+     `teamctl.sh init "<team-name>" "<task-summary>"`.
+   - **Apply the standard layout** only to a dedicated team window. Keep the
+     leader on the left third and split workers evenly in the right column.
 2. **Wait for ready.** CLIs need boot time: capture-pane until the input prompt appears before first dispatch.
 3. **Dispatch contract.** One physical line per task — embedded newlines submit early. Long context: write it to `$TEAM_DIR/tasks/<id>.md` and reference the path in the prompt. Prompts must be self-contained (agent can't ask you questions): goal, inputs, where to write, `DONE <id>` sentinel (teamctl appends the last two). Send the literal prompt first, wait **500 ms**, then send `Enter`; Codex needs this gap to finish handling the pasted prompt. `teamctl.sh dispatch` applies the conservative 500 ms delay to every seat so Codex is always safe.
 4. **One in-flight task per pane.** Extra lines queue in the pty and interleave.

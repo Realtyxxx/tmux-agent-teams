@@ -1,0 +1,143 @@
+{
+  "schema_version": 1,
+  "refresh_policy": {
+    "max_age_days": 7,
+    "retry_after_failure_days": 1
+  },
+  "refreshed_at": "2026-07-23T19:42:31+08:00",
+  "refresh_after": "2026-07-30T19:42:31+08:00",
+  "refreshed_by": "model-cache-auditor",
+  "clis": {
+    "claude": {
+      "cli_version": "2.1.197",
+      "catalog_status": "partial",
+      "source_commands": [
+        "command claude --version",
+        "command claude --help",
+        "interactive /model observed in a confirmed pane on 2026-07-13"
+      ],
+      "models": [
+        {
+          "id": "sonnet",
+          "label": "Sonnet 5"
+        },
+        {
+          "id": "opus",
+          "label": "Opus 4.8"
+        },
+        {
+          "id": "haiku",
+          "label": "Haiku 4.5"
+        },
+        {
+          "id": "fable",
+          "label": "fable"
+        }
+      ],
+      "default_model": null,
+      "team_default_model": null,
+      "team_default_strategy": "cli-default",
+      "notes": "Non-interactive help exposes aliases but not the complete account catalog; last-known-good labels from the confirmed interactive observation are preserved."
+    },
+    "codex": {
+      "cli_version": "0.145.0",
+      "catalog_status": "complete",
+      "source_commands": [
+        "command codex --version",
+        "command codex debug models",
+        "command codex doctor --json"
+      ],
+      "models": [
+        {
+          "id": "gpt-5.6-sol",
+          "label": "GPT-5.6-Sol"
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "label": "GPT-5.6-Terra"
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "label": "GPT-5.6-Luna"
+        },
+        {
+          "id": "gpt-5.5",
+          "label": "GPT-5.5"
+        },
+        {
+          "id": "gpt-5.4",
+          "label": "GPT-5.4"
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "label": "GPT-5.4-Mini"
+        },
+        {
+          "id": "gpt-5.3-codex-spark",
+          "label": "GPT-5.3-Codex-Spark"
+        },
+        {
+          "id": "codex-auto-review",
+          "label": "Codex Auto Review"
+        }
+      ],
+      "default_model": "gpt-5.6-sol",
+      "team_default_model": null,
+      "team_default_strategy": "cli-default"
+    },
+    "agy": {
+      "cli_version": "1.1.5",
+      "catalog_status": "complete",
+      "source_commands": ["command agy --version", "command agy models"],
+      "models": [
+        {
+          "id": "gemini-3.6-flash-high",
+          "label": "Gemini 3.6 Flash (High)"
+        },
+        {
+          "id": "gemini-3.6-flash-medium",
+          "label": "Gemini 3.6 Flash (Medium)"
+        },
+        {
+          "id": "gemini-3.6-flash-low",
+          "label": "Gemini 3.6 Flash (Low)"
+        },
+        {
+          "id": "gemini-3.5-flash-high",
+          "label": "Gemini 3.5 Flash (High)"
+        },
+        {
+          "id": "gemini-3.5-flash-medium",
+          "label": "Gemini 3.5 Flash (Medium)"
+        },
+        {
+          "id": "gemini-3.5-flash-low",
+          "label": "Gemini 3.5 Flash (Low)"
+        },
+        {
+          "id": "gemini-3.1-pro-high",
+          "label": "Gemini 3.1 Pro (High)"
+        },
+        {
+          "id": "gemini-3.1-pro-low",
+          "label": "Gemini 3.1 Pro (Low)"
+        },
+        {
+          "id": "claude-sonnet-4-6",
+          "label": "Claude Sonnet 4.6 (Thinking)"
+        },
+        {
+          "id": "claude-opus-4-6-thinking",
+          "label": "Claude Opus 4.6 (Thinking)"
+        },
+        {
+          "id": "gpt-oss-120b-medium",
+          "label": "GPT-OSS 120B (Medium)"
+        }
+      ],
+      "default_model": null,
+      "team_default_model": "Gemini 3.5 Flash (Medium)",
+      "team_default_strategy": "cached-preference"
+    }
+  }
+}

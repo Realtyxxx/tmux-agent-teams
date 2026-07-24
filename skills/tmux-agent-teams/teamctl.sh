@@ -15,6 +15,7 @@ TEAM_META="$TEAM_DIR/team-meta.env"
 TEAM_NAME="${TEAM_NAME:-}"
 TEAM_TASK="${TEAM_TASK:-}"
 
+# Set the current tmux window title from TEAM_NAME and TEAM_TASK.
 _apply_window_title() {
   local title=""
   if [ -n "$TEAM_NAME" ] && [ -n "$TEAM_TASK" ]; then
@@ -30,6 +31,7 @@ _apply_window_title() {
   fi
 }
 
+# Persist team metadata for later invocations.
 _save_meta() {
   printf 'TEAM_NAME=%q\nTEAM_TASK=%q\n' "$TEAM_NAME" "$TEAM_TASK" > "$TEAM_META"
 }
@@ -39,7 +41,7 @@ task_done() { [ -f "$RES/$1.md" ] && tail -1 "$RES/$1.md" | grep -q "DONE $1"; }
 cmd="${1:-help}"
 shift || true
 case "$cmd" in
-  init)
+  init) # init [team-name] [task-description]
     mkdir -p "$RES" "$TEAM_DIR/tasks"
     : > "$REG"
     : > "$BOARD"
@@ -48,22 +50,6 @@ case "$cmd" in
     _save_meta
     _apply_window_title
     echo "$TEAM_DIR"
-    ;;
-  ui) # ui <session> — pane-id borders + status bar, scoped to the team session
-    s="$1"
-    for w in $(tmux list-windows -t "$s" -F '#{window_id}'); do
-      tmux set-option -w -t "$w" pane-border-status top
-      tmux set-option -w -t "$w" pane-border-format \
-        ' #{?pane_active,#[reverse],}#{pane_id} #{pane_title} idx=#{pane_index} #{pane_current_command} #{pane_current_path} #[default]'
-    done
-    tmux set-option -t "$s" status-right-length 160
-    tmux set-option -t "$s" status-right \
-      'P=#{pane_id} | B=#(tmux list-buffers -F "##{buffer_name}" | head -n 1) | %H:%M'
-    ;;
-  layout) # layout <window> [main-width] — lead left (default 33%), seats even right
-    w="$1" width="${2:-33%}"
-    tmux set-window-option -t "$w" main-pane-width "$width"
-    tmux select-layout -t "$w" main-vertical
     ;;
   register) # register <name> <pane-id>
     if ! tmux display -pt "$2" '#{pane_id}' >/dev/null 2>&1; then
@@ -123,14 +109,14 @@ case "$cmd" in
       printf 'task\t%s\t%s\t%s\n' "$id" "$owner" "$s"
     done < "$BOARD"
     ;;
-  set-title)
+  set-title) # set-title [team-name] [task-description]
     [ -n "${1:-}" ] && TEAM_NAME="$1"
     [ -n "${2:-}" ] && TEAM_TASK="$2"
     _save_meta
     _apply_window_title
     ;;
   *)
-    echo "usage: teamctl.sh init [name] [task] | ui <session> | layout <window> [main-width] | register <name> <pane> | dispatch <name> <id> '<prompt>' | wait <timeout> <id>... | idle | status | set-title [name] [task]" >&2
+    echo "usage: teamctl.sh init [name] [task] | register <name> <pane> | dispatch <name> <id> '<prompt>' | wait <timeout> <id>... | idle | status | set-title [name] [task]" >&2
     exit 1
     ;;
 esac
