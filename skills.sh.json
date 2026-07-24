@@ -1,0 +1,11 @@
+{
+  "$schema": "https://skills.sh/schemas/skills.sh.schema.json",
+  "notGrouped": "bottom",
+  "groupings": [
+    {
+      "title": "Agent workflows",
+      "description": "Skills for coordinating coding agents and engineering workflows.",
+      "skills": ["tmux-agent-teams"]
+    }
+  ]
+}

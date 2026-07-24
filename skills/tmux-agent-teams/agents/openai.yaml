@@ -1,0 +1,4 @@
+interface:
+  display_name: "tmux Agent Teams"
+  short_description: "Coordinate coding agents safely in tmux panes"
+  default_prompt: "Use $tmux-agent-teams to design and run a confirmed tmux-based agent team."
