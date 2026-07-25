@@ -72,25 +72,27 @@ flowchart LR
 ```
 
 1. Read this skill and the assigned task contract completely.
-2. Validate that the responsibility, method, scope, and acceptance criteria are
+2. If `.tmux-agent-team/mode.md` exists for the team, read it completely and
+   apply its additional scenario constraints.
+3. Validate that the responsibility, method, scope, and acceptance criteria are
    explicit.
-3. Perform only the assigned task.
-4. Write all substantive content to the artifact path. This includes findings,
+4. Perform only the assigned task.
+5. Write all substantive content to the artifact path. This includes findings,
    reasoning, diffs, logs, reviews, summaries, and user-facing prose.
-5. Write the receipt last. It may contain only the schema below.
-6. Make the final receipt line exactly `DONE <task-id>`.
-7. Stop. Do not self-assign follow-up work.
+6. Write the receipt last. It may contain only the schema below.
+7. Make the final receipt line exactly `DONE <task-id>`.
+8. Stop. Do not self-assign follow-up work.
 
 When using a git worktree, publish only control metadata:
 
 ```bash
-teamctl.sh worktree-register "<worker-name>" \
-  --dir "<worktree-path>" \
-  --status working
+teamctl.sh worktree-register --dir "<worktree-path>" --status working
 ```
 
-Use `worktree-update` for later state changes. This does not authorize task
-scheduling or edits to another worker's row.
+The helper derives identity from the current registered tmux pane. Use
+`worktree-update --mr '!123' --status review` for later state changes. Do not
+pass a Worker name, pane ID, or different directory. This does not authorize
+task scheduling or edits to another Worker's row.
 
 ## Receipt Schema
 

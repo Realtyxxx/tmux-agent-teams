@@ -16,6 +16,10 @@
   contract.
 - **Worktree control board:** workers can publish their own worktree, branch,
   merge-request, and status metadata without taking over team scheduling.
+- **Scenario modes:** the main Skill can discover an optional workflow mode,
+  read its additional constraints, and freeze the selected definition for all
+  Workers. The first included mode covers multi-Worker fix/feature worktrees
+  delivered through MRs or PRs.
 
 ### Improvements
 
@@ -30,6 +34,11 @@
 - **Independent verification:** review and verification are assigned to workers
   other than the artifact author, with final delivery produced as an opaque
   user-facing artifact.
+- **Self-owned worktree rows:** worktree registration derives Worker identity
+  from the verified current pane, validates MR/status transitions, and rejects
+  active pane, directory, or repository-branch conflicts.
+- **Project-local control plane:** runtime files and intermediate coordination
+  artifacts now live under `.tmux-agent-team/`.
 
 ### Breaking Changes
 
@@ -40,6 +49,8 @@
 - Team setup documentation now uses `register-worker` to make the registered
   object type explicit. The previous `register` command remains available as a
   compatibility alias.
+- `worktree-register` and `worktree-update` no longer accept a Worker name,
+  pane override, or directory change during updates.
 
 ### Validation
 

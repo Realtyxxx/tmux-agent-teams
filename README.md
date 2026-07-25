@@ -9,6 +9,7 @@ leader/worker role separation.
 | -------------------------------------------------------------- | --------- | ---------------------------------------------------------- |
 | [`tmux-agent-teams`](skills/tmux-agent-teams/SKILL.md)         | Leader    | Negotiate, schedule, route, and report control-plane state |
 | [`tmux-agent-worker`](skills/tmux-agent-teams/worker/SKILL.md) | Worker    | Define worker interaction and output boundaries            |
+| [`modes/`](skills/tmux-agent-teams/modes/INDEX.md)             | On match  | Add scenario-specific planning and lifecycle constraints   |
 
 The worker skill is bundled inside the main package. The leader reads only the
 primary skill. Every dispatch automatically tells the assigned worker to read
@@ -17,6 +18,18 @@ the secondary skill.
 Task-specific implementation, investigation, review, and verification methods
 are not hard-coded in either role. The leader proposes them to the user as part
 of the roster and writes the confirmed choices into each task contract.
+
+The main Skill reads the mode index when designing a team. If the user's
+workflow matches one registered trigger, the Leader reads that mode before
+proposing the roster. After confirmation, the selected mode is frozen to
+`.tmux-agent-team/mode.md`, and every governed Worker reads the same snapshot.
+
+| Included mode    | Trigger                                                                                                     |
+| ---------------- | ----------------------------------------------------------------------------------------------------------- |
+| `fix-feature-mr` | Multiple Workers own isolated fix/feature worktrees and branches, then deliver and review separate MRs/PRs. |
+
+All runtime control files and intermediate coordination artifacts use the
+project-local `.tmux-agent-team/` directory.
 
 ## Branches
 

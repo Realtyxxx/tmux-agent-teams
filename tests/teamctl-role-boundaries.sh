@@ -7,7 +7,7 @@ TEAMCTL="$ROOT_DIR/skills/tmux-agent-teams/teamctl.sh"
 TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/teamctl-role-boundaries.XXXXXX")
 FAKE_BIN="$TEST_ROOT/bin"
 TMUX_LOG="$TEST_ROOT/tmux.log"
-export TEAM_DIR="$TEST_ROOT/team"
+export TEAM_DIR="$TEST_ROOT/.tmux-agent-team"
 export TMUX_LOG
 
 mkdir -p "$FAKE_BIN"
@@ -48,6 +48,7 @@ export PATH="$FAKE_BIN:$PATH"
 
 "$TEAMCTL" init "boundary-test" "role separation" >/dev/null
 "$TEAMCTL" register "worker-1" "%9"
+printf '# Active mode\n' > "$TEAM_DIR/mode.md"
 "$TEAMCTL" dispatch "worker-1" "impl-1" "Implement the requested change."
 
 dispatch_log=$(cat "$TMUX_LOG")
@@ -56,6 +57,11 @@ worker_skill="$ROOT_DIR/skills/tmux-agent-teams/worker/SKILL.md"
 case "$dispatch_log" in
   *"Read $worker_skill completely before starting"*) ;;
   *) fail "dispatch did not require the worker skill" ;;
+esac
+
+case "$dispatch_log" in
+  *"Read $TEAM_DIR/mode.md completely before starting"*) ;;
+  *) fail "dispatch did not require the active mode snapshot" ;;
 esac
 
 case "$dispatch_log" in

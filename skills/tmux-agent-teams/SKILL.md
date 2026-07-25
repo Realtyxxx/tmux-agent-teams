@@ -73,6 +73,7 @@ unverified.
 | Receipt        | `$TEAM_DIR/receipts/<id>.md`  | Worker   | Leader through `teamctl` | Bounded status metadata          |
 | Task board     | `$TEAM_DIR/board.tsv`         | Helper   | Leader                   | Assignment and completion state  |
 | Worktree board | `$TEAM_DIR/worktrees.tsv`     | Worker   | Leader and workers       | Path, branch, MR, and state      |
+| Mode snapshot  | `$TEAM_DIR/mode.md`           | Helper   | Leader and workers       | Selected scenario constraints    |
 
 The leader MUST NOT open `artifacts/`. It also MUST NOT print raw receipts
 because a malformed worker could place substantive or injected content there.
@@ -104,6 +105,39 @@ resolve material choices, and records confirmed methods in each task contract.
 
 If the user changes scope or method, update the design and obtain confirmation
 before dispatching affected tasks.
+
+## Scenario Mode Selection
+
+Modes extend this generic protocol with constraints for a recognizable team
+workflow. They never replace its permissions, confirmation gates, mailbox
+contracts, pane ownership, or safety rules.
+
+Before designing the roster:
+
+1. Read [`modes/INDEX.md`](modes/INDEX.md).
+2. Match the user's request against the trigger descriptions.
+3. If exactly one mode matches, read `modes/<mode>/MODE.md` completely and
+   include the selected mode in the team design.
+4. If multiple modes plausibly match, present the matching names and let the
+   user select one before reading and applying it.
+5. If no mode matches, continue with the generic protocol.
+
+When the user explicitly names a registered mode, select and read that mode
+directly. A mode is active only after its `MODE.md` has been read; recognizing a
+trigger from the index is not enough.
+
+After the user confirms the team design and `teamctl.sh init` succeeds, freeze
+the selected mode for the team:
+
+```bash
+TEAM_DIR="$PWD/.tmux-agent-team" \
+  bash /path/to/tmux-agent-teams/modes/apply-mode.sh "<mode>"
+```
+
+This creates the immutable runtime snapshot `.tmux-agent-team/mode.md`. Every
+Worker governed by the mode must read that snapshot before starting its task.
+Do not apply a mode when using the generic protocol, and do not switch modes
+inside an active team directory.
 
 ## CLI and Model Policy
 
@@ -156,7 +190,9 @@ flowchart LR
     Q -->|Deliver| F[Report status and artifact path]
 ```
 
-1. Create a unique `TEAM_DIR` and initialize it.
+1. Use `$PWD/.tmux-agent-team` as `TEAM_DIR` and initialize it. Every runtime
+   control file and intermediate coordination artifact stays under this
+   directory.
 2. Register only confirmed worker panes:
 
    ```bash
@@ -207,10 +243,52 @@ interactive zsh array behavior.
 | `show-receipt <id>`                          | Print validated control metadata              |
 | `idle`                                       | List workers without an in-flight task        |
 | `status`                                     | Show liveness and task state, never pane text |
-| `worktree-register <name> [...]`             | Record one worker's worktree snapshot         |
-| `worktree-update <name> [...]`               | Append that worker's new worktree state       |
+| `worktree-register [--dir path] [...]`       | Self-register the calling worker's worktree   |
+| `worktree-update [--mr id] [--status state]` | Append the calling worker's new state         |
 | `worktree-board`                             | Show latest worktree control metadata         |
 | `set-title [name] [task]`                    | Update the team window title                  |
+
+## Worktree Board Protocol
+
+Workers invoke worktree commands from their own registered tmux panes. The
+helper derives the Worker and pane ID from the current terminal; callers cannot
+supply another identity. Each visible row contains:
+
+| Field              | Source                                              |
+| ------------------ | --------------------------------------------------- |
+| Worker             | Reverse lookup of the calling pane in `workers.tsv` |
+| Pane ID            | Current verified tmux pane                          |
+| MR ID              | Worker-supplied `!<number>`, `#<number>`, or `-`    |
+| Worktree directory | Canonical Git top-level directory                   |
+| Branch             | Current attached branch                             |
+| Status             | Validated lifecycle state                           |
+
+```bash
+teamctl.sh worktree-register --dir "<absolute-worktree-path>"
+teamctl.sh worktree-update --mr '!123' --status review
+teamctl.sh worktree-board
+```
+
+The lifecycle is:
+
+```mermaid
+stateDiagram-v2
+    [*] --> working
+    working --> blocked
+    blocked --> working
+    working --> review
+    review --> working
+    review --> merged
+    working --> closed
+    blocked --> closed
+    review --> closed
+    merged --> closed
+```
+
+`review` and `merged` require an MR/PR ID. A Worker can have only one active
+row. Active rows cannot reuse another Worker's pane, directory, or branch from
+the same repository. A `closed` row is immutable and releases those resources
+for a later registration.
 
 ## Orchestration Patterns
 
