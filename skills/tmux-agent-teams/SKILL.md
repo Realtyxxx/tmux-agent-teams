@@ -1,300 +1,250 @@
 ---
 name: tmux-agent-teams
-description: 'Use when coordinating multiple AI agent CLIs (claude, codex) running in tmux panes as a team on one task — dispatching subtasks, scheduling parallel work, collecting results — or when hand-rolled send-keys/capture-pane orchestration is flaky (captured "thinking..." instead of the answer, answers scrolled off screen, prompts mangled by ; or -, blind sleep races). Triggers: 多个 agent 协作, tmux 面板编排, agent team, multi-agent tmux.'
+description: "Use when a confirmed team of external Claude Code or Codex agents must cooperate in tmux panes, especially when the current agent must remain a manager and substantive work must stay isolated in worker artifacts. Triggers: 多个 agent 协作, tmux 面板编排, leader worker, agent team, multi-agent tmux."
 ---
 
-# tmux Agent Teams
+# tmux Agent Teams — Leader Skill
 
 ## Overview
 
-Drive several agent CLIs, each in its own tmux pane, as one team: you (the current agent) are the lead and orchestrator — dispatch subtasks, schedule, collect, synthesize, and continuously supervise and report status to the user. The lead never takes a work seat; it only orchestrates.
+This is the **primary skill for the `leader` object**. Read this file completely
+before creating a team. The leader behaves like a product manager: it negotiates
+the work design with the user, builds the task graph, dispatches workers, routes
+blockers, and reports control-plane status.
 
-**Core principle: keys down, files back.** Dispatch with `send-keys -l`; results come back as mailbox files the agent writes. Never scrape answers off the screen — TUI agents run on the alternate screen (`capture-pane -S` has NO scrollback there) and verbose logs scroll answers away. `capture-pane` is for liveness checks and debugging only.
+The secondary skill is [`worker/SKILL.md`](worker/SKILL.md). The leader MUST NOT
+open or load it. `teamctl.sh dispatch` gives its absolute path to every worker,
+and each worker must read it before starting.
 
-## When to Use
+**Core principle: the leader manages work but never performs or consumes it.**
 
-- Heterogeneous or external agent CLIs must cooperate — the built-in Agent/Workflow tools can't drive external CLIs
-- User asks to coordinate agents already running in tmux panes
+## Objects
 
-**Not for:** same-harness subagents as work seats (use Agent tool / Workflow —
-cheaper and structured); a single quick question to one pane. The bounded model
-cache refresh helper below is the only same-harness exception, and it runs only
-when the user explicitly asks to refresh.
+The protocol has exactly two object types:
 
-## Team Design & Confirmation (MANDATORY first step)
+| Object   | Owns                                                       | Does not own                                       |
+| -------- | ---------------------------------------------------------- | -------------------------------------------------- |
+| `leader` | User alignment, roster, task graph, scheduling, escalation | Implementation, investigation, review, work output |
+| `worker` | One bounded task and its substantive artifact              | Team policy, roster, scheduling, user commitments  |
 
-The roster is fixed to two CLIs — never use others. If a `model-catalog.json`
-exists next to this file, read it before designing the roster; this package
-ships without one — configure it on the target server, or run an explicit
-refresh, before relying on cached model validation. Normal team startup must
-not query live model catalogs. After the user confirms the roster, launch in
-full-access mode by default:
+Worker responsibilities are dynamic. A worker can be assigned implementation,
+investigation, review, verification, integration, or delivery, but only through
+a user-confirmed task contract.
 
-| CLI    | Full-access launch (default)                               | Session-scoped model override |
-| ------ | ---------------------------------------------------------- | ----------------------------- |
-| claude | `command claude --dangerously-skip-permissions`            | `--model <m> --effort <e>`    |
-| codex  | `command codex --dangerously-bypass-approvals-and-sandbox` | `-m <m> -c '<effort config>'` |
+## Permission Boundary
 
-Before creating any session, launching any CLI, or dispatching anything:
+| Capability                                      | Leader | Worker |
+| ----------------------------------------------- | :----: | :----: |
+| Read this primary skill                         |  MUST  | NEVER  |
+| Read `worker/SKILL.md`                          | NEVER  |  MUST  |
+| Negotiate roster and methods with the user      |  MUST  | NEVER  |
+| Create, prioritize, assign, or cancel tasks     |  MUST  | NEVER  |
+| Inspect task source, code, documents, or data   | NEVER  |  MAY   |
+| Implement, investigate, analyze, or review      | NEVER  |  MAY   |
+| Read or summarize work artifacts                | NEVER  |  MAY   |
+| Read bounded control receipts                   |  MAY   |  MAY   |
+| Read the worktree control board                 |  MAY   |  MAY   |
+| Update a worker's own worktree snapshot         | NEVER  |  MAY   |
+| Change the agreed task method or acceptance bar | NEVER  | NEVER  |
 
-1. **Load the model cache** (if present) and follow the cache decision flow
-   below. Never refresh automatically — on any cache problem, ask the user. A
-   refresh runs only when the user explicitly requests it, in exactly one
-   same-harness subagent (never the lead, never a tmux team seat).
-2. **Design the team**: seats, role per seat, CLI + model per seat,
-   orchestration pattern. If the user did not specify a model, use `CLI default`
-   (omit all model and effort flags).
-3. **Present the design to the user and get confirmation** of the roster. A
-   default model is confirmed as part of this single design review; do not ask a
-   separate model question merely because the user omitted it.
-4. Only then execute.
+The leader may inspect tmux identities, liveness, process state, the task board,
+and validated receipt fields. These are orchestration metadata, not work output.
 
-No exceptions:
+### No Managerial Override
 
-- "It's a fresh dedicated session, not their panes" — still confirm. Pane-target confirmation (Protocol step 1) is a separate, additional check.
-- "The flags/tools match what the user usually uses" — the roster still needs
-  sign-off; `CLI default` is a valid model choice.
-- "The task is read-only / low risk" — still confirm.
+The following are still work and MUST be delegated:
 
-A subagent that cannot reach the user must return the team design as its final message and stop — do not launch anything.
+- Opening an artifact “just to understand it”
+- Reading a diff, source file, report, review, or test log
+- Doing a quick implementation, investigation, or sanity check
+- Synthesizing findings into a technical answer
+- Accepting work based on personal judgment
 
-## Cached Model Selection
+Deadlines, idle worker seats, small changes, and user urgency do not relax the
+boundary. If no qualified worker is available, report the task as blocked or
+unverified.
 
-Model catalogs and defaults can vary by CLI version, account, provider, and
-workspace. `model-catalog.json` (sibling of this file) is the last-known-good
-catalog. Use it as-is regardless of age — the cache is refreshed **only on
-explicit user request**, never automatically on staleness, TTL, startup, a
-missing entry, or a model miss. Do not call any CLI, including `--version`,
-merely because this skill was loaded or a new team is being created.
+## Information Planes
+
+| Plane          | Path                          | Producer | Reader                   | Content                          |
+| -------------- | ----------------------------- | -------- | ------------------------ | -------------------------------- |
+| Task contract  | `$TEAM_DIR/tasks/<id>.md`     | Leader   | Assigned worker          | Confirmed work instructions      |
+| Work artifact  | `$TEAM_DIR/artifacts/<id>.md` | Worker   | Other assigned workers   | Findings, code review, synthesis |
+| Receipt        | `$TEAM_DIR/receipts/<id>.md`  | Worker   | Leader through `teamctl` | Bounded status metadata          |
+| Task board     | `$TEAM_DIR/board.tsv`         | Helper   | Leader                   | Assignment and completion state  |
+| Worktree board | `$TEAM_DIR/worktrees.tsv`     | Worker   | Leader and workers       | Path, branch, MR, and state      |
+
+The leader MUST NOT open `artifacts/`. It also MUST NOT print raw receipts
+because a malformed worker could place substantive or injected content there.
+Use `teamctl.sh show-receipt <id>` to expose only validated control fields.
+
+Pane output is not a result channel. Do not use `capture-pane` to collect or
+read work. Liveness checks must use tmux metadata such as pane existence,
+`pane_dead`, and `pane_current_command`.
+
+## Team Design and User Confirmation
+
+Before creating a session, launching a CLI, or dispatching a task, propose the
+team design and obtain the user's confirmation.
+
+| Required field       | Meaning                                                   |
+| -------------------- | --------------------------------------------------------- |
+| Worker               | Stable seat name                                          |
+| Responsibility       | Implementation, investigation, review, verification, etc. |
+| Method               | Task-specific approach, tools, or required skill          |
+| Inputs               | User-provided context or opaque prior-artifact paths      |
+| Acceptance criteria  | Observable completion conditions                          |
+| Dependency/verifier  | Upstream artifacts and independent checking route         |
+| CLI and model        | `claude` or `codex`, plus launch-scoped model choice      |
+| Artifact destination | The work product another worker or the user will consume  |
+
+The secondary skill defines only interaction. It does not choose technical
+methods. The leader proposes methods from the user's request, asks the user to
+resolve material choices, and records confirmed methods in each task contract.
+
+If the user changes scope or method, update the design and obtain confirmation
+before dispatching affected tasks.
+
+## CLI and Model Policy
+
+The supported worker CLIs are fixed:
+
+| CLI    | Full-access launch after confirmation                      |
+| ------ | ---------------------------------------------------------- |
+| claude | `command claude --dangerously-skip-permissions`            |
+| codex  | `command codex --dangerously-bypass-approvals-and-sandbox` |
+
+Use launch-scoped model flags only. Never type `/model` or edit persistent CLI
+configuration. If the user does not name a model, use the CLI default and omit
+model flags. If the user names a model, validate it against a sibling
+`model-catalog.json` when present. A missing or unusable cache is a user
+decision point; never refresh it automatically.
+
+## Leader Startup
+
+| Mode           | Trigger                               | Leader location                      |
+| -------------- | ------------------------------------- | ------------------------------------ |
+| Self-lead      | Current agent is asked to orchestrate | Current agent in a dedicated pane    |
+| Spawn a leader | User explicitly asks for another lead | New window or dedicated tmux session |
+
+The leader occupies the left pane and workers occupy the right panes. If the
+current leader shares a window with unrelated panes, isolate it before creating
+worker seats. Never apply team UI or layout settings to the user's unrelated
+windows.
+
+Set a concise window title:
+
+```bash
+teamctl.sh init "<team-name>" "<task-summary>"
+teamctl.sh ui "<session>"
+teamctl.sh layout "<window>"
+```
+
+## Dispatch Protocol
 
 ```mermaid
 flowchart LR
-    A[Read model-catalog.json] --> B{User explicitly asked to refresh?}
-    B -->|Yes| C[One refresh subagent; wait]
-    B -->|No| D{User named a model AND cache usable?}
-    D -->|Yes| F[Validate against cache]
-    D -->|No, CLI default suffices| E[Omit model flags; no cache needed]
-    D -->|No, cache needed but unusable| G[Ask the user — never refresh automatically]
-    C --> F
+    U[User confirms design] --> L[Leader writes task contract]
+    L --> D[Leader dispatches worker]
+    D --> W[Worker loads secondary skill]
+    W --> A[Worker writes artifact and receipt]
+    A --> R[Leader reads validated receipt fields]
+    R --> Q{Next route}
+    Q -->|Verify| V[Dispatch a different worker]
+    Q -->|Rework| D
+    Q -->|Blocked| U
+    Q -->|Deliver| F[Report status and artifact path]
 ```
 
-| CLI    | Team default when unspecified                | One-session launch override                        |
-| ------ | -------------------------------------------- | -------------------------------------------------- |
-| claude | CLI default; omit `--model` and effort flags | `--model <model> --effort <level>`                 |
-| codex  | CLI default; omit `-m` and effort config     | `-m <model> -c 'model_reasoning_effort="<level>"'` |
+1. Create a unique `TEAM_DIR` and initialize it.
+2. Register only confirmed worker panes:
 
-Apply this decision flow:
+   ```bash
+   teamctl.sh register-worker "<worker>" "<pane-id>"
+   ```
 
-1. If the user explicitly asked to refresh, start one refresh subagent, wait for
-   it, then use the updated cache.
-2. If the user did not name a model, use the CLI default: omit all model and
-   effort flags. No cache lookup is required for this path — a missing
-   `model-catalog.json` does not block a CLI-default launch.
-3. If the user explicitly named a model, validate it against the cache. If the
-   cache is missing, invalid, has no usable entry, or misses that model, **ask
-   the user** (offer to refresh); do not refresh silently. Absence from
-   Claude's `partial` catalog is unknown, not proof that the model is
-   unavailable.
-4. Use the cache regardless of its age; show its `refreshed_at` date in the
-   roster so the user can decide whether to request a refresh.
-5. For an existing pane, preserve its active model. Do not silently restart or
-   switch it.
+3. Wait for CLI readiness without reading substantive pane output.
+4. Write long contracts to `$TEAM_DIR/tasks/<id>.md`. Each contract must
+   contain the confirmed objective, responsibility, method, inputs, allowed
+   scope, acceptance criteria, dependencies, deadline, and artifact path.
+5. Dispatch one physical line:
 
-## Model Cache Refresh — One Subagent Only
+   ```bash
+   teamctl.sh dispatch "<worker>" "<id>" \
+     "Execute the confirmed contract at $TEAM_DIR/tasks/<id>.md."
+   ```
 
-Refresh **only when the user explicitly requests it** — never automatically on
-staleness, TTL, startup, a missing/invalid cache, or an unresolved model. In
-those non-explicit cases, ask the user instead. Reuse one in-flight refresh
-worker; never fan this task out by CLI. The worker is an orchestration helper,
-not a roster seat, so it does not need team confirmation.
+   The helper automatically requires the worker to read the secondary skill and
+   appends the artifact/receipt contract.
 
-Give that subagent this contract:
+6. Keep one in-flight task per worker.
+7. Wait only on control receipts:
 
-1. Read this skill and the current `model-catalog.json` completely (create it
-   if absent).
-2. From the outer shell, run only the read-only discovery commands below. Run
-   version commands only inside this refresh task.
+   ```bash
+   teamctl.sh wait 600 "<id>"
+   teamctl.sh show-receipt "<id>"
+   ```
 
-   | CLI    | Version and discovery commands                                                         |
-   | ------ | -------------------------------------------------------------------------------------- |
-   | claude | `command claude --version`; `command claude --help`                                    |
-   | codex  | `command codex --version`; `command codex debug models`; `command codex doctor --json` |
+8. Route `verify` and `review` to a worker other than the artifact author.
+   Provide only the opaque artifact path; the leader does not open it.
+9. For delivery, assign a worker to create the user-facing artifact. The leader
+   reports the validated status and artifact path without reading or
+   synthesizing its content.
 
-3. Filter command output inside the subagent. Store only model identifiers or
-   labels, the effective default when discoverable, CLI version, source
-   commands, status, and concise notes. Never return or place Codex's raw model
-   instructions in the lead context or cache.
-4. Do not launch an interactive agent, use `/model`, inspect or edit CLI config,
-   or change any active pane. Claude's non-interactive catalog may remain
-   `partial`.
-5. Preserve the last-known-good entry when one CLI check fails and record a
-   concise `last_error`. Set `refresh_after` to seven days after a fully
-   successful refresh, or one day after a partial failure.
-6. Write a sibling temporary JSON file, validate it with `jq -e .`, then
-   atomically replace `model-catalog.json`. Never leave partially written JSON.
-7. Return only a short change summary. The lead reads the cache, not raw command
-   output.
+Scheduler loops belong in a Bash file executed with `bash`; do not rely on
+interactive zsh array behavior.
 
-If no same-harness subagent is available, keep using a usable stale cache and
-disclose its date. If the cache is unusable, ask the user instead of moving the
-slow discovery work back into the lead's startup path.
+## Quick Reference
 
-Never edit `~/.claude` or `~/.codex` configuration files as part of model
-selection or testing. Prefer launch flags because their scope is explicit and
-isolated to the new session. In the tested CLIs, Codex `/model` changed
-persistent user settings; therefore automation must not use `/model` for model
-switching. Claude offers a session-only choice in `/model`, but launch flags
-remain the uniform team policy. Claude's non-interactive help does not expose
-its full catalog; do not launch a fresh agent merely to enumerate it when using
-the CLI default is sufficient.
+| Command                                      | Leader-visible effect                         |
+| -------------------------------------------- | --------------------------------------------- |
+| `init [name] [task]`                         | Create task, artifact, and receipt channels   |
+| `ui <session>`                               | Apply session-scoped pane identity UI         |
+| `layout <window> [main-width]`               | Leader left, workers evenly split right       |
+| `register-worker <name> <pane-id>`           | Register one worker object                    |
+| `dispatch <worker> <id> '<one-line prompt>'` | Inject worker skill and output contract       |
+| `wait <timeout-s> <id>...`                   | Poll receipts without reading artifacts       |
+| `show-receipt <id>`                          | Print validated control metadata              |
+| `idle`                                       | List workers without an in-flight task        |
+| `status`                                     | Show liveness and task state, never pane text |
+| `worktree-register <name> [...]`             | Record one worker's worktree snapshot         |
+| `worktree-update <name> [...]`               | Append that worker's new worktree state       |
+| `worktree-board`                             | Show latest worktree control metadata         |
+| `set-title [name] [task]`                    | Update the team window title                  |
 
-Use `command <cli>` for discovery and launch so shell aliases do not inject or
-duplicate flags. This matters when a user alias already includes full-access
-arguments.
+## Orchestration Patterns
 
-## Quick Reference — `teamctl.sh` (same dir)
+| Pattern            | Leader action                                                       |
+| ------------------ | ------------------------------------------------------------------- |
+| Fan-out            | Dispatch independent confirmed contracts to idle workers            |
+| Pipeline           | Route an artifact path to the next worker after a completed receipt |
+| Independent verify | Assign a different worker to inspect the prior artifact             |
+| Judge panel        | Assign a worker to judge multiple opaque artifact paths             |
+| Rework loop        | Route a failed verdict back to an implementation worker             |
 
-| Command                                         | Does                                                                       |
-| ----------------------------------------------- | -------------------------------------------------------------------------- |
-| `init [name] [task]`                            | create `$TEAM_DIR`; optionally set window title to `🤖 TEAM: name \| task` |
-| `ui <session>`                                  | pane-id borders + status bar, scoped to the session                        |
-| `layout <window> [main-width]`                  | lead left (default `33%`), seats split evenly right                        |
-| `register <name> <pane-id>`                     | verify pane exists, title it, record it                                    |
-| `dispatch <name> <task-id> '<one-line prompt>'` | send task; auto-appends the result-file contract                           |
-| `wait <timeout-s> <id>...`                      | poll result files for `DONE <id>`                                          |
-| `idle`                                          | registered agents with no in-flight task                                   |
-| `status`                                        | task board + last visible line of each pane                                |
-| `set-title [name] [task]`                       | update the tmux window title (persisted in `team-meta.env`)                |
+Workers editing files in parallel need isolated git worktrees. Worktree setup
+is itself a worker task unless it is purely tmux/team administration.
 
-`TEAM_DIR` defaults to `/tmp/agent-team`; export a unique one per team.
+## Red Flags
 
-`wait` is Bash file polling, not an agent callback: it checks the mailbox every
-two seconds without invoking a model or consuming LLM tokens. A timeout returns
-status `124` but does not stop the agent; recheck the mailbox before diagnosing
-the pane because completion can land immediately after the deadline.
+- Leader opens anything under `artifacts/`
+- Leader reads pane text or a raw receipt
+- Leader says “I will quickly check/fix/summarize”
+- Worker starts before reading the secondary skill
+- Worker chooses a material method absent from the confirmed contract
+- The artifact author verifies its own work
+- Completion is inferred from pane text instead of an exact receipt sentinel
 
-## Leadership Mode at Startup (MANDATORY — decide from the launch prompt)
-
-The launch prompt decides who orchestrates. Pick one mode **before** creating any
-pane, window, or session:
-
-| Mode                   | Trigger in the launch prompt                  | Leader runs as                        | Seats run in                      |
-| ---------------------- | --------------------------------------------- | ------------------------------------- | --------------------------------- |
-| **A · Self-lead**      | prompt tells the current agent to orchestrate | the current agent (no new leader CLI) | the **same window** as the leader |
-| **B · Spawn a leader** | prompt asks to create a separate leader agent | a fresh leader CLI you launch         | the leader's own window/session   |
-
-**Mode A — become the leader yourself.**
-
-- Seats are created in the **same window** as the leader.
-- If the leader (you) is not already alone — its own single pane in its own
-  window — first `tmux break-pane` yourself out into a dedicated window so that
-  window holds only the leader. Confirm your pane id with
-  `display-message -p '#{pane_id}'` before breaking.
-- Then `split-window` seats into that now-clean window and register them.
-
-**Mode B — create a separate leader.**
-
-- If the current agent is **already inside tmux**: create the leader in a **new
-  window** (`tmux new-window`), then build the team around it.
-- If the current agent is **not inside tmux**: create a **new tmux session** for
-  the team (`tmux new-session -d -s team-x '<leader-cli>'`).
-
-```mermaid
-flowchart TD
-    P[Launch prompt] --> M{Self-lead or spawn a leader?}
-    M -->|Self-lead| A{Already alone in own window?}
-    A -->|No| A1[break-pane to a solo window]
-    A -->|Yes| A2[keep current window]
-    A1 --> S[split-window seats in same window]
-    A2 --> S
-    M -->|Spawn leader| B{Already inside tmux?}
-    B -->|Yes| B1[new-window for the leader]
-    B -->|No| B2[new-session for the team]
-```
-
-Then continue with the window title setup and Protocol below.
-
-## Window Title Management
-
-When a team starts, set the tmux window title so the team is identifiable in
-`tmux list-windows` and the status bar.
-
-**Title format:** `🤖 TEAM: <team-name> | <task-summary>`
-
-Examples:
-
-- `🤖 TEAM: refactor-squad | migrate auth module to JWT`
-- `🤖 TEAM: perf-team | optimize GEMM kernel latency`
-- `🤖 TEAM: review-crew` (task omitted)
-
-Pass the team name and task summary to `init`:
-
-```bash
-teamctl.sh init "refactor-squad" "migrate auth module to JWT"
-```
-
-The command persists both values in `$TEAM_DIR/team-meta.env` and disables
-`automatic-rename`. Update the title during the session with:
-
-```bash
-teamctl.sh set-title "refactor-squad" "phase 2: integration tests"
-```
-
-Choose a concise team name and keep the task summary to eight words or fewer.
-
-## Protocol
-
-1. **Setup (per the Leadership Mode above).** The current agent is the orchestrator (supervise + report status; never a work seat).
-   - **If you are already running inside tmux, orchestrate from the current window** — but first isolate yourself: `tmux break-pane` your own pane out into a new window so the lead sits alone and later seat keystrokes can never land on it (`display-message -p '#{pane_id}'` to confirm which pane is yours before breaking). Only then create team seats (new panes/windows) and register them.
-   - **If you are not inside tmux**, prefer a dedicated session: `tmux new-session -d -s team-x '<agent-cli>'`.
-   - To drive pre-existing panes, `list-panes -a` first, register only confirmed panes, and confirm with the user — a wrong target types into their live work.
-   - **Set the window title** by passing the team name and task summary to
-     `init`: `teamctl.sh init "<team-name>" "<task-summary>"`.
-   - **Layout & pane UI (dedicated team session/window only).** After creating
-     the session run `teamctl.sh ui <session>` (stable `#{pane_id}` +
-     registered `#{pane_title}` in each pane border; status bar shows current
-     pane and newest paste buffer — all scoped to the team session, never `-g`
-     global, so the user's own tmux config is untouched). Arrange seats with
-     `teamctl.sh layout <window>`: the lead/orchestrator pane takes the left
-     `33%` (`main-pane-width` + `main-vertical`) and all seat panes split
-     evenly in the right column. Create seats with plain `split-window -t
-<window>` and re-run `layout` after every new seat to re-even the column.
-     Never apply `ui`/`layout` to a window that contains the user's
-     pre-existing panes.
-2. **Wait for ready.** CLIs need boot time: capture-pane until the input prompt appears before first dispatch.
-3. **Dispatch contract.** One physical line per task — embedded newlines submit early. Long context: write it to `$TEAM_DIR/tasks/<id>.md` and reference the path in the prompt. Prompts must be self-contained (agent can't ask you questions): goal, inputs, where to write, `DONE <id>` sentinel (teamctl appends the last two). Send the literal prompt first, wait **500 ms**, then send `Enter`; Codex needs this gap to finish handling the pasted prompt. `teamctl.sh dispatch` applies the conservative 500 ms delay to every seat so Codex is always safe.
-4. **One in-flight task per pane.** Extra lines queue in the pty and interleave.
-5. **Collect.** `wait`, then read `results/<id>.md`. On timeout: capture-pane to diagnose (stuck? asking a question? needs approval?), answer it or re-dispatch to another agent.
-6. **Scheduler loops go in a file, run via `bash file.sh`** — inline Bash-tool scripts may execute under zsh, whose 1-indexed arrays silently corrupt task queues.
-
-## Orchestration Patterns (Workflow-adapted)
-
-Panes are a fixed-size worker pool; adapt ultracode Workflow patterns:
-
-| Pattern            | tmux form                                                                       |
-| ------------------ | ------------------------------------------------------------------------------- |
-| Fan-out            | task queue; loop: `idle` → dispatch next task                                   |
-| Pipeline           | the moment task A's result file lands, dispatch A's stage 2 — no global barrier |
-| Adversarial verify | send each result to a _different_ agent than its author: "try to refute"        |
-| Judge panel        | same task to N agents; one agent judges the N result files                      |
-| Loop-until-dry     | keep dispatching finder rounds until 2 consecutive rounds add nothing new       |
-
-Agents editing files in parallel → give each its own git worktree.
+Any red flag means stop, restore the role boundary, and re-dispatch or escalate.
 
 ## Common Mistakes
 
-| Mistake                                | Consequence                                                           | Fix                                                    |
-| -------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------ |
-| `send-keys` without `-l`               | `;` splits command, leading `-` parses as flag, "Enter" becomes a key | always `-l`; wait 500 ms, then send `Enter` separately |
-| fixed `sleep` + one capture            | captures "thinking..." or misses the answer                           | poll for the `DONE` file                               |
-| results via `capture-pane -S`          | alternate-screen TUIs have no scrollback; logs scroll answers away    | mailbox files are the result channel                   |
-| inline scheduler script                | zsh 1-indexed arrays → blank/shifted dispatch                         | write to file, run `bash file.sh`                      |
-| unverified pane target                 | keystrokes land in the user's real session                            | dedicated session, or registry + user confirmation     |
-| multi-line prompt                      | each newline submits a partial prompt                                 | single line + context file                             |
-| executing before team confirmation     | user gets a team, tools, and models they never approved               | design → confirm CLI+model with user → execute         |
-| reading live catalogs on every startup | avoidable latency and potentially huge model metadata in lead context | read JSON cache; refresh only on explicit request      |
-| auto-refreshing without being asked    | surprise latency and unwanted discovery runs                          | refresh only on explicit user request                  |
-| stale or missing cached model          | unavailable model may be selected                                     | ask the user (offer to refresh); never auto-refresh    |
-| model switching via config or `/model` | persistent user-default changes and cross-pane races                  | use a launch-scoped model flag                         |
-| nested model discovery in an agent     | a second interactive CLI can hang or contend with the parent session  | run discovery from the outer shell                     |
-| alias plus duplicated launch flags     | duplicate or conflicting full-access/model arguments                  | use `command <cli>`                                    |
+| Mistake                              | Fix                                                      |
+| ------------------------------------ | -------------------------------------------------------- |
+| Leader reads a result to route it    | Route by validated receipt and opaque artifact path      |
+| Secondary skill prescribes methods   | Put task-specific methods in the confirmed task contract |
+| Worker asks questions in pane output | Write a bounded `blocked` receipt for leader escalation  |
+| `capture-pane` collects answers      | Use it for neither results nor leader liveness reporting |
+| `send-keys` mangles prompt text      | Use `send-keys -l`, wait 500 ms, then send `Enter`       |
+| Fixed sleep implies completion       | Poll the exact receipt sentinel                          |
+| Leader performs final synthesis      | Assign a delivery worker and return its artifact path    |

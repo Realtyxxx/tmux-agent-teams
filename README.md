@@ -1,12 +1,22 @@
 # tmux Agent Teams
 
-An open source Agent Skill for coordinating coding agents in tmux.
+An open source Agent Skill for coordinating coding agents in tmux with strict
+leader/worker role separation.
 
-## Skills
+## Skill Architecture
 
-| Skill                                          | Purpose                                                                                      |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [`tmux-agent-teams`](skills/tmux-agent-teams/) | Coordinate Claude Code and Codex workers in tmux panes with mailbox-based result collection. |
+| Skill                                                          | Loaded by | Purpose                                                    |
+| -------------------------------------------------------------- | --------- | ---------------------------------------------------------- |
+| [`tmux-agent-teams`](skills/tmux-agent-teams/SKILL.md)         | Leader    | Negotiate, schedule, route, and report control-plane state |
+| [`tmux-agent-worker`](skills/tmux-agent-teams/worker/SKILL.md) | Worker    | Define worker interaction and output boundaries            |
+
+The worker skill is bundled inside the main package. The leader reads only the
+primary skill. Every dispatch automatically tells the assigned worker to read
+the secondary skill.
+
+Task-specific implementation, investigation, review, and verification methods
+are not hard-coded in either role. The leader proposes them to the user as part
+of the roster and writes the confirmed choices into each task contract.
 
 ## Branches
 
@@ -48,8 +58,10 @@ npx skills add Realtyxxx/tmux-agent-teams \
 ## Security
 
 `tmux-agent-teams` can launch agent CLIs with their full-access flags after the
-user confirms the team roster. Review the generated roster and target panes
-before approving a launch.
+user confirms the team roster and work methods. The leader does not read worker
+artifacts; it observes validated receipts and opaque artifact paths. Review the
+generated roster, methods, permissions, and target panes before approving a
+launch.
 
 ## License
 
