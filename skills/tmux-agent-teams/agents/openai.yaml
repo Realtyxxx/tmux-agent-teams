@@ -1,4 +1,4 @@
 interface:
   display_name: "tmux Agent Teams"
-  short_description: "Coordinate coding agents safely in tmux panes"
-  default_prompt: "Use $tmux-agent-teams to design and run a confirmed tmux-based agent team."
+  short_description: "Manage role-separated workers in tmux panes"
+  default_prompt: "Use $tmux-agent-teams as the leader-only skill, confirm the roster and methods, and require every worker to load the bundled worker skill."
