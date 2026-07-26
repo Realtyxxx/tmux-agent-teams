@@ -22,14 +22,28 @@ of the roster and writes the confirmed choices into each task contract.
 The main Skill reads the mode index when designing a team. If the user's
 workflow matches one registered trigger, the Leader reads that mode before
 proposing the roster. After confirmation, the selected mode is frozen to
-`.tmux-agent-team/mode.md`, and every governed Worker reads the same snapshot.
+`.teams/<team-name>/mode.md`, and every governed Worker reads the same snapshot.
 
 | Included mode    | Trigger                                                                                                     |
 | ---------------- | ----------------------------------------------------------------------------------------------------------- |
 | `fix-feature-mr` | Multiple Workers own isolated fix/feature worktrees and branches, then deliver and review separate MRs/PRs. |
 
-All runtime control files and intermediate coordination artifacts use the
-project-local `.tmux-agent-team/` directory.
+All runtime control files and intermediate coordination artifacts use isolated
+project-local `.teams/<team-name>/` directories. `teamctl.sh teams` lists them,
+and `teamctl.sh --team <team-name> ...` selects one without conflating teams in
+the same repository.
+
+## Persistent Team Sessions
+
+The Leader records the Claude Code or Codex session UUID, working directory,
+and tmux pane for itself and every Worker during team creation. A team cannot
+close until this registry is complete.
+
+`teamctl.sh close` persists lifecycle state and closes the tmux session.
+`teamctl.sh resume` creates fresh panes and resumes each recorded CLI session.
+Deleted Worker worktrees are skipped and reported in
+`.teams/<team-name>/resume-report.tsv`; they do not prevent the remaining
+sessions from resuming.
 
 ## Branches
 
@@ -74,7 +88,7 @@ npx skills add Realtyxxx/tmux-agent-teams \
 user confirms the team roster and work methods. The leader does not read worker
 artifacts; it observes validated receipts and opaque artifact paths. Review the
 generated roster, methods, permissions, and target panes before approving a
-launch.
+launch. Session resume does not silently reapply permission-bypass flags.
 
 ## License
 

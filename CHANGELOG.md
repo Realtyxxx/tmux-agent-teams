@@ -20,6 +20,12 @@
   read its additional constraints, and freeze the selected definition for all
   Workers. The first included mode covers multi-Worker fix/feature worktrees
   delivered through MRs or PRs.
+- **Multiple teams per project:** every team now owns an isolated
+  `.teams/<team-name>/` control directory and can be listed or selected by
+  stable name.
+- **Persistent team sessions:** Leaders record Claude Code and Codex session
+  UUIDs during team creation. Closed teams can recreate panes and resume those
+  sessions later.
 
 ### Improvements
 
@@ -38,7 +44,30 @@
   from the verified current pane, validates MR/status transitions, and rejects
   active pane, directory, or repository-branch conflicts.
 - **Project-local control plane:** runtime files and intermediate coordination
-  artifacts now live under `.tmux-agent-team/`.
+  artifacts now live under `.teams/<team-name>/`, with explicit legacy support
+  for `.tmux-agent-team/`. Because a Worker's working directory can be its own
+  worktree, every dispatch pins the absolute team directory instead of relying
+  on the default.
+- **Recoverable close/resume:** `close` requires a complete agent-session
+  registry before terminating tmux. `resume` restores recorded UUIDs with fresh
+  panes, skips deleted Worker worktrees, and persists a bounded resume report.
+- **Safer resumed permissions:** session resume uses current CLI permission
+  defaults and never silently reapplies permission-bypass flags.
+- **Terminal worktree rows:** closing a row no longer requires a live checkout,
+  so a Worker can finish its lifecycle in either order relative to
+  `git worktree remove` and still release its seat.
+- **Single-cause failures:** helpers used inside command substitutions report and
+  return instead of exiting a subshell, so an uninitialized control directory is
+  named once rather than surfacing as a follow-on lock or empty-field error.
+- **Pane ownership by process:** a caller qualifies through the pane's
+  controlling terminal or through descent from the pane's process, so an agent
+  CLI's tool calls can self-register while an exported `TMUX_PANE` still cannot
+  impersonate another Worker.
+- **Protected team state:** `init` refuses to reset a control directory that
+  already holds a registry or board, and `--force` clears the boards together
+  with any frozen mode.
+- **Board entry state:** registration must start at `working`, so a Worker cannot
+  enter the board already in `review` or `merged`.
 
 ### Breaking Changes
 
@@ -51,6 +80,11 @@
   compatibility alias.
 - `worktree-register` and `worktree-update` no longer accept a Worker name,
   pane override, or directory change during updates.
+- `init` no longer resets an initialized control directory without `--force`.
+- New default control directories moved from `.tmux-agent-team/` to
+  `.teams/<team-name>/`; explicit legacy `TEAM_DIR` values remain accepted.
+- `close` now refuses teams whose Leader or Workers lack recorded CLI session
+  UUIDs.
 
 ### Validation
 
@@ -58,3 +92,16 @@
 - Verified that workers block instead of inventing an unconfirmed work method.
 - Validated receipt filtering, role-separated completion polling, tmux worktree
   metadata, Markdown formatting, and Bash syntax.
+- Verified in real tmux panes that a Worker self-registers without naming itself,
+  cannot spoof another pane, cannot skip lifecycle states, and can close a
+  worktree it already removed and then register the next one.
+- Verified that dispatch pins the control directory, that an uninitialized
+  control directory is reported by name, and that scenario modes stay inside the
+  main Skill.
+- Verified that a Worker registers from a terminal-less agent tool call, that a
+  second `init` refuses to erase an active team while `--force` resets it, and
+  that registration cannot start past `working`.
+- Verified that two teams coexist in one project, that mode snapshots stay
+  isolated by team, and that name-based selection reaches the intended state.
+- Verified against real tmux panes that a closed team resumes the recorded
+  Codex UUID while a deleted Claude Worker worktree is skipped and reported.

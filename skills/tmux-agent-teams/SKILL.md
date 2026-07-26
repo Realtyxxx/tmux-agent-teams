@@ -73,6 +73,8 @@ unverified.
 | Receipt        | `$TEAM_DIR/receipts/<id>.md`  | Worker   | Leader through `teamctl` | Bounded status metadata          |
 | Task board     | `$TEAM_DIR/board.tsv`         | Helper   | Leader                   | Assignment and completion state  |
 | Worktree board | `$TEAM_DIR/worktrees.tsv`     | Worker   | Leader and workers       | Path, branch, MR, and state      |
+| Agent registry | `$TEAM_DIR/agents.tsv`        | Leader   | Lifecycle helper         | CLI session IDs and working dirs |
+| Resume report  | `$TEAM_DIR/resume-report.tsv` | Helper   | Leader and user          | Resumed and skipped agent rows   |
 | Mode snapshot  | `$TEAM_DIR/mode.md`           | Helper   | Leader and workers       | Selected scenario constraints    |
 
 The leader MUST NOT open `artifacts/`. It also MUST NOT print raw receipts
@@ -130,12 +132,13 @@ After the user confirms the team design and `teamctl.sh init` succeeds, freeze
 the selected mode for the team:
 
 ```bash
-TEAM_DIR="$PWD/.tmux-agent-team" \
+TEAM_DIR="$PWD/.teams/<team-name>" \
   bash /path/to/tmux-agent-teams/modes/apply-mode.sh "<mode>"
 ```
 
-This creates the immutable runtime snapshot `.tmux-agent-team/mode.md`. Every
-Worker governed by the mode must read that snapshot before starting its task.
+This creates the immutable runtime snapshot
+`.teams/<team-name>/mode.md`. Every Worker governed by the mode must read that
+snapshot before starting its task.
 Do not apply a mode when using the generic protocol, and do not switch modes
 inside an active team directory.
 
@@ -169,10 +172,64 @@ windows.
 Set a concise window title:
 
 ```bash
-teamctl.sh init "<team-name>" "<task-summary>"
-teamctl.sh ui "<session>"
-teamctl.sh layout "<window>"
+TEAM_DIR=$(teamctl.sh init "<team-name>" "<task-summary>")
+TEAM_DIR="$TEAM_DIR" teamctl.sh ui "<session>"
+TEAM_DIR="$TEAM_DIR" teamctl.sh layout "<window>"
 ```
+
+New teams use the project Git root's `.teams/<team-name>/` directory. The name
+is the stable selector for `teamctl.sh --team <team-name> ...`; `teamctl.sh
+teams` lists every team in the project. `init` refuses to replace an existing
+team. Resetting on purpose requires `--force`, which clears its registries and
+boards and drops any frozen mode.
+
+## Agent Session Registry
+
+The leader MUST record every resumable CLI session while creating the team,
+before dispatching substantive work. `close` refuses an incomplete roster.
+
+```bash
+TEAM_DIR="$TEAM_DIR" teamctl.sh register-leader \
+  "<leader>" "<pane-id>" "<claude|codex>" "<session-uuid>" "<working-dir>"
+TEAM_DIR="$TEAM_DIR" teamctl.sh register-worker "<worker>" "<pane-id>"
+TEAM_DIR="$TEAM_DIR" teamctl.sh record-agent-session \
+  worker "<worker>" "<claude|codex>" "<session-uuid>" "<working-dir>"
+```
+
+For Claude Code, the leader can generate the UUID first and launch with
+`--session-id <uuid>`. Codex assigns the ID; its tool subprocesses expose the
+current UUID as `CODEX_THREAD_ID`. During pane bootstrap, return only that UUID
+through bounded control metadata, then let the leader call
+`record-agent-session`. Do not scrape the pane or a transcript for an ID.
+
+The registry stores role, stable name, CLI, session UUID, canonical working
+directory, pane ID, and lifecycle state. All registered agents must belong to
+the same tmux session.
+
+## Team Close and Resume
+
+```mermaid
+flowchart LR
+    A[Active team] -->|close| C[Closed team]
+    C -->|resume| R{Agent input available?}
+    R -->|Leader unavailable| B[Resume blocked]
+    R -->|Worker worktree or CLI missing| S[Worker skipped and reported]
+    R -->|Available| P[Fresh pane resumes session]
+    P --> A
+    S --> A
+```
+
+`teamctl.sh close` persists `closed` state before terminating the recorded tmux
+session. `teamctl.sh resume` creates fresh panes and invokes `claude --resume`
+or `codex resume` with each recorded UUID. Resume does not reapply permission
+bypass flags; current CLI permission defaults apply.
+
+For a Worker with a worktree-board row, that recorded worktree is the resume
+directory. If it has been deleted, the Worker is skipped and reported as
+`missing-worktree`; other resumable agents still start. A missing leader
+directory or leader CLI blocks resume. Every attempt writes
+`$TEAM_DIR/resume-report.tsv`. A resumed Worker also gets a new worktree-board
+snapshot that binds its existing lifecycle row to the fresh pane ID.
 
 ## Dispatch Protocol
 
@@ -190,13 +247,17 @@ flowchart LR
     Q -->|Deliver| F[Report status and artifact path]
 ```
 
-1. Use `$PWD/.tmux-agent-team` as `TEAM_DIR` and initialize it. Every runtime
-   control file and intermediate coordination artifact stays under this
+1. Run `init <team-name> ...` and use its returned
+   `<project-root>/.teams/<team-name>` path as `TEAM_DIR`. Every runtime control
+   file and intermediate coordination artifact stays under that team
    directory.
-2. Register only confirmed worker panes:
+2. Register the leader session and each confirmed worker pane. Record every
+   Worker session UUID before dispatch:
 
    ```bash
-   teamctl.sh register-worker "<worker>" "<pane-id>"
+   TEAM_DIR="$TEAM_DIR" teamctl.sh register-worker "<worker>" "<pane-id>"
+   TEAM_DIR="$TEAM_DIR" teamctl.sh record-agent-session \
+     worker "<worker>" "<cli>" "<session-uuid>" "<working-dir>"
    ```
 
 3. Wait for CLI readiness without reading substantive pane output.
@@ -206,7 +267,7 @@ flowchart LR
 5. Dispatch one physical line:
 
    ```bash
-   teamctl.sh dispatch "<worker>" "<id>" \
+   TEAM_DIR="$TEAM_DIR" teamctl.sh dispatch "<worker>" "<id>" \
      "Execute the confirmed contract at $TEAM_DIR/tasks/<id>.md."
    ```
 
@@ -232,27 +293,36 @@ interactive zsh array behavior.
 
 ## Quick Reference
 
-| Command                                      | Leader-visible effect                         |
-| -------------------------------------------- | --------------------------------------------- |
-| `init [name] [task]`                         | Create task, artifact, and receipt channels   |
-| `ui <session>`                               | Apply session-scoped pane identity UI         |
-| `layout <window> [main-width]`               | Leader left, workers evenly split right       |
-| `register-worker <name> <pane-id>`           | Register one worker object                    |
-| `dispatch <worker> <id> '<one-line prompt>'` | Inject worker skill and output contract       |
-| `wait <timeout-s> <id>...`                   | Poll receipts without reading artifacts       |
-| `show-receipt <id>`                          | Print validated control metadata              |
-| `idle`                                       | List workers without an in-flight task        |
-| `status`                                     | Show liveness and task state, never pane text |
-| `worktree-register [--dir path] [...]`       | Self-register the calling worker's worktree   |
-| `worktree-update [--mr id] [--status state]` | Append the calling worker's new state         |
-| `worktree-board`                             | Show latest worktree control metadata         |
-| `set-title [name] [task]`                    | Update the team window title                  |
+| Command                                                 | Leader-visible effect                         |
+| ------------------------------------------------------- | --------------------------------------------- |
+| `init <name> [task] [--force]`                          | Create `.teams/<name>` control channels       |
+| `teams`                                                 | List project team names and lifecycle states  |
+| `--team <name> <command>`                               | Select one project team                       |
+| `ui <session>`                                          | Apply session-scoped pane identity UI         |
+| `layout <window> [main-width]`                          | Leader left, workers evenly split right       |
+| `register-leader <name> <pane> <cli> <uuid> [dir]`      | Record the leader's resumable session         |
+| `register-worker <name> <pane> [<cli> <uuid> [dir]]`    | Register a Worker and optional session        |
+| `record-agent-session <role> <name> <cli> <uuid> [dir]` | Add session metadata after pane bootstrap     |
+| `close`                                                 | Persist state and close the team tmux session |
+| `resume`                                                | Resume recorded IDs and report skipped agents |
+| `dispatch <worker> <id> '<one-line prompt>'`            | Inject worker skill and output contract       |
+| `wait <timeout-s> <id>...`                              | Poll receipts without reading artifacts       |
+| `show-receipt <id>`                                     | Print validated control metadata              |
+| `idle`                                                  | List workers without an in-flight task        |
+| `status`                                                | Show liveness and task state, never pane text |
+| `worktree-register [--dir path] [...]`                  | Self-register the calling Worker's worktree   |
+| `worktree-update [--mr id] [--status state]`            | Append the calling Worker's new state         |
+| `worktree-board`                                        | Show latest worktree control metadata         |
+| `set-title [name] [task]`                               | Update the team window title                  |
 
 ## Worktree Board Protocol
 
-Workers invoke worktree commands from their own registered tmux panes. The
-helper derives the Worker and pane ID from the current terminal; callers cannot
-supply another identity. Each visible row contains:
+Workers invoke worktree commands from their own registered tmux panes. The helper
+derives the Worker and pane ID from the calling process, so callers cannot supply
+another identity. A caller is accepted when its controlling terminal is the
+pane's terminal, or when it descends from the pane's process, which is how an
+agent CLI's tool calls qualify. Exporting `TMUX_PANE` satisfies neither. Each
+visible row contains:
 
 | Field              | Source                                              |
 | ------------------ | --------------------------------------------------- |
@@ -263,9 +333,15 @@ supply another identity. Each visible row contains:
 | Branch             | Current attached branch                             |
 | Status             | Validated lifecycle state                           |
 
+Identity comes from the pane, but the control directory does not. A Worker's
+working directory may be its own worktree, where the project owner's
+`.teams/<team-name>/` control directory does not exist, so every dispatch pins
+the absolute control directory and Workers pass it explicitly:
+
 ```bash
-teamctl.sh worktree-register --dir "<absolute-worktree-path>"
-teamctl.sh worktree-update --mr '!123' --status review
+TEAM_DIR="<control-dir>" teamctl.sh worktree-register \
+  --dir "<absolute-worktree-path>"
+TEAM_DIR="<control-dir>" teamctl.sh worktree-update --mr '!123' --status review
 teamctl.sh worktree-board
 ```
 
@@ -285,10 +361,17 @@ stateDiagram-v2
     merged --> closed
 ```
 
-`review` and `merged` require an MR/PR ID. A Worker can have only one active
-row. Active rows cannot reuse another Worker's pane, directory, or branch from
+Registration always starts at `working`; a Worker cannot enter the board at a
+later state. `review` and `merged` require an MR/PR ID. A Worker can have only
+one active row. Active rows cannot reuse another Worker's pane, directory, or branch from
 the same repository. A `closed` row is immutable and releases those resources
 for a later registration.
+
+Every state except `closed` is verified against the live checkout, so the
+recorded directory must still be a Git worktree on an attached branch. `closed`
+is exempt: removing the worktree is a normal end of its lifecycle, so a row can
+be closed before or after `git worktree remove` and keeps the directory and
+branch recorded at registration time.
 
 ## Orchestration Patterns
 

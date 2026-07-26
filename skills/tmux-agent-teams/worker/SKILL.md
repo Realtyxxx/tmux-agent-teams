@@ -72,8 +72,8 @@ flowchart LR
 ```
 
 1. Read this skill and the assigned task contract completely.
-2. If `.tmux-agent-team/mode.md` exists for the team, read it completely and
-   apply its additional scenario constraints.
+2. If `$TEAM_DIR/mode.md` exists for the team, read it completely and apply its
+   additional scenario constraints.
 3. Validate that the responsibility, method, scope, and acceptance criteria are
    explicit.
 4. Perform only the assigned task.
@@ -86,13 +86,23 @@ flowchart LR
 When using a git worktree, publish only control metadata:
 
 ```bash
-teamctl.sh worktree-register --dir "<worktree-path>" --status working
+TEAM_DIR="<control-dir>" teamctl.sh worktree-register \
+  --dir "<worktree-path>" --status working
 ```
 
-The helper derives identity from the current registered tmux pane. Use
-`worktree-update --mr '!123' --status review` for later state changes. Do not
-pass a Worker name, pane ID, or different directory. This does not authorize
-task scheduling or edits to another Worker's row.
+Always pass the absolute `TEAM_DIR` given in the dispatch line. Your working
+directory may be your own worktree, which does not contain the team control
+directory, so never rely on the default.
+
+The helper derives identity from the pane your process runs in, so run it from
+your own pane and let it register you. Registration always starts at `working`.
+Use `worktree-update --mr '!123' --status review` for later state changes. Do not
+pass a Worker name, pane ID, or different directory. This does not authorize task
+scheduling or edits to another Worker's row.
+
+Set `--status closed` when the worktree lifecycle is over. Closing works whether
+or not the worktree still exists, so it is safe after `git worktree remove`, and
+it is what releases your seat for a later registration.
 
 ## Receipt Schema
 

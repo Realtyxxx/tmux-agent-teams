@@ -28,9 +28,16 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-case "$TEAM_DIR" in
-  .tmux-agent-team | */.tmux-agent-team) ;;
-  *) die "TEAM_DIR must be named .tmux-agent-team: $TEAM_DIR" ;;
+team_dir_name="${TEAM_DIR##*/}"
+team_dir_parent="${TEAM_DIR%/*}"
+case "$TEAM_DIR:$team_dir_parent" in
+  .tmux-agent-team:* | */.tmux-agent-team:*) ;;
+  *)
+    [ "${team_dir_parent##*/}" = ".teams" ] ||
+      die "TEAM_DIR must be .teams/<team-name>: $TEAM_DIR"
+    [[ "$team_dir_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
+      die "invalid team directory name: $team_dir_name"
+    ;;
 esac
 
 if ! [[ "$MODE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
@@ -40,7 +47,7 @@ fi
 SOURCE="$MODE_ROOT/$MODE_NAME/MODE.md"
 [ -f "$SOURCE" ] || die "unknown mode: $MODE_NAME"
 
-for required in workers.tsv board.tsv worktrees.tsv team-meta.env; do
+for required in agents.tsv workers.tsv board.tsv worktrees.tsv team-meta.env; do
   [ -e "$TEAM_DIR/$required" ] ||
     die "TEAM_DIR is not initialized: missing $required"
 done

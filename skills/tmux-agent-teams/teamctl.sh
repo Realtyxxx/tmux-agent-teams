@@ -3,29 +3,98 @@
 # Protocol: the leader sends one literal line; workers write substantive
 # artifacts separately from bounded control receipts.
 set -uo pipefail
-TEAM_DIR="${TEAM_DIR:-$PWD/.tmux-agent-team}"
-TEAM_DIR="${TEAM_DIR%/}"
-case "$TEAM_DIR" in
-  .tmux-agent-team | */.tmux-agent-team) ;;
+
+valid_team_name() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+}
+
+TEAM_SELECTOR=""
+if [ "${1:-}" = "--team" ]; then
+  [ "$#" -ge 2 ] || {
+    echo "missing value for --team" >&2
+    exit 1
+  }
+  TEAM_SELECTOR="$2"
+  shift 2
+fi
+
+cmd="${1:-help}"
+shift || true
+
+if [ -z "${TEAM_ROOT:-}" ]; then
+  if project_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+    TEAM_ROOT="$project_root/.teams"
+  else
+    TEAM_ROOT="$PWD/.teams"
+  fi
+fi
+TEAM_ROOT="${TEAM_ROOT%/}"
+case "$TEAM_ROOT" in
+  .teams | */.teams) ;;
   *)
-    echo "TEAM_DIR must be named .tmux-agent-team: $TEAM_DIR" >&2
+    echo "TEAM_ROOT must be named .teams: $TEAM_ROOT" >&2
     exit 1
     ;;
 esac
+
+if [ -n "${TEAM_DIR:-}" ]; then
+  :
+elif [ "$cmd" = "init" ]; then
+  valid_team_name "${1:-}" || {
+    echo "invalid team name: ${1:-}" >&2
+    exit 1
+  }
+  TEAM_DIR="$TEAM_ROOT/$1"
+elif [ -n "$TEAM_SELECTOR" ]; then
+  valid_team_name "$TEAM_SELECTOR" || {
+    echo "invalid team name: $TEAM_SELECTOR" >&2
+    exit 1
+  }
+  TEAM_DIR="$TEAM_ROOT/$TEAM_SELECTOR"
+elif [ "$cmd" = "teams" ]; then
+  TEAM_DIR="$TEAM_ROOT/.unselected"
+else
+  # Keep explicit compatibility for control planes created before
+  # project-local .teams/<team-name> directories were introduced.
+  TEAM_DIR="$PWD/.tmux-agent-team"
+fi
+
+TEAM_DIR="${TEAM_DIR%/}"
+team_dir_name="${TEAM_DIR##*/}"
+team_dir_parent="${TEAM_DIR%/*}"
+if [ "$cmd" != "teams" ]; then
+  case "$TEAM_DIR:$team_dir_parent" in
+    .tmux-agent-team:* | */.tmux-agent-team:*) ;;
+    *)
+      [ "${team_dir_parent##*/}" = ".teams" ] || {
+        echo "TEAM_DIR must be .teams/<team-name>: $TEAM_DIR" >&2
+        exit 1
+      }
+      valid_team_name "$team_dir_name" || {
+        echo "invalid team directory name: $team_dir_name" >&2
+        exit 1
+      }
+      ;;
+  esac
+fi
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WORKER_SKILL="${WORKER_SKILL:-$SCRIPT_DIR/worker/SKILL.md}"
 REG="$TEAM_DIR/workers.tsv"
+AGENTS="$TEAM_DIR/agents.tsv"
 BOARD="$TEAM_DIR/board.tsv"
 WORKTREE_BOARD="$TEAM_DIR/worktrees.tsv"
 WORKTREE_LOCK="$TEAM_DIR/.worktrees.lock"
 ARTIFACTS="$TEAM_DIR/artifacts"
 RECEIPTS="$TEAM_DIR/receipts"
 TEAM_META="$TEAM_DIR/team-meta.env"
+RESUME_REPORT="$TEAM_DIR/resume-report.tsv"
 WORKTREE_LOCK_HELD=0
 
 [ -f "$TEAM_META" ] && . "$TEAM_META" 2>/dev/null
 TEAM_NAME="${TEAM_NAME:-}"
 TEAM_TASK="${TEAM_TASK:-}"
+TEAM_STATUS="${TEAM_STATUS:-active}"
+TEAM_TMUX_SESSION="${TEAM_TMUX_SESSION:-}"
 
 _apply_window_title() {
   local title=""
@@ -43,11 +112,19 @@ _apply_window_title() {
 }
 
 _save_meta() {
-  printf 'TEAM_NAME=%q\nTEAM_TASK=%q\n' "$TEAM_NAME" "$TEAM_TASK" > "$TEAM_META"
+  printf 'TEAM_NAME=%q\nTEAM_TASK=%q\nTEAM_STATUS=%q\nTEAM_TMUX_SESSION=%q\n' \
+    "$TEAM_NAME" "$TEAM_TASK" "$TEAM_STATUS" "$TEAM_TMUX_SESSION" \
+    > "$TEAM_META"
 }
 
-_die() {
+_error() {
   echo "$*" >&2
+}
+
+# Only safe in the main shell. Helpers used inside a command substitution must
+# report with _error and return non-zero so the caller can exit.
+_die() {
+  _error "$*"
   exit 1
 }
 
@@ -117,23 +194,122 @@ _registered_worker_for_pane() {
   awk -F'\t' -v p="$pane" '$2 == p { worker = $1 } END { print worker }' "$REG"
 }
 
-_current_worker_name() {
-  local pane="${TMUX_PANE:-}" pane_tty current_tty worker count
+_valid_agent_session_id() {
+  [[ "$1" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]
+}
 
-  [ -n "$pane" ] ||
-    _die "worktree updates must run inside a registered worker pane"
-  if ! tmux display-message -p -t "$pane" '#{pane_id}' >/dev/null 2>&1; then
+_register_agent_session() {
+  local role="$1" name="$2" pane="$3" cli="$4" session_id="$5"
+  local requested_dir="${6:-}" pane_meta tmux_session pane_dir workdir
+  local existing
+
+  [ "$TEAM_STATUS" = "active" ] ||
+    _die "cannot register an agent in a $TEAM_STATUS team: $TEAM_NAME"
+  _validate_board_field "agent role" "$role"
+  _validate_board_field "agent name" "$name"
+  _validate_board_field "pane id" "$pane"
+  _validate_board_field "agent CLI" "$cli"
+  _validate_board_field "agent session id" "$session_id"
+  case "$role" in
+    leader | worker) ;;
+    *) _die "invalid agent role: $role" ;;
+  esac
+  case "$cli" in
+    claude | codex) ;;
+    *) _die "unsupported agent CLI: $cli" ;;
+  esac
+  _valid_agent_session_id "$session_id" ||
+    _die "invalid agent session id: $session_id"
+
+  pane_meta=$(tmux display-message -p -t "$pane" \
+    '#{session_name}	#{pane_current_path}' 2>/dev/null) ||
     _die "no such pane: $pane"
+  IFS=$'\t' read -r tmux_session pane_dir <<< "$pane_meta"
+  _validate_board_field "tmux session" "$tmux_session"
+  [ -n "$requested_dir" ] || requested_dir="$pane_dir"
+  workdir=$(cd "$requested_dir" 2>/dev/null && pwd -P) ||
+    _die "agent working directory does not exist: $requested_dir"
+  _validate_board_field "agent working directory" "$workdir"
+
+  touch "$AGENTS"
+  existing=$(awk -F'\t' -v n="$name" -v p="$pane" -v s="$session_id" '
+    $2 == n || $6 == p || $4 == s { print $2; exit }
+  ' "$AGENTS")
+  [ -z "$existing" ] ||
+    _die "agent name, pane, or session is already registered: $existing"
+  if [ "$role" = "leader" ] &&
+    awk -F'\t' '$1 == "leader" { found = 1 } END { exit !found }' "$AGENTS"; then
+    _die "team already has a registered leader"
   fi
-  pane_tty=$(tmux display-message -p -t "$pane" '#{pane_tty}')
+
+  if [ -z "$TEAM_TMUX_SESSION" ]; then
+    TEAM_TMUX_SESSION="$tmux_session"
+    _save_meta
+  elif [ "$TEAM_TMUX_SESSION" != "$tmux_session" ]; then
+    _die "agent pane belongs to another tmux session: $tmux_session"
+  fi
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\tactive\n' \
+    "$role" "$name" "$cli" "$session_id" "$workdir" "$pane" >> "$AGENTS"
+}
+
+# Proves the caller really runs inside the pane it claims. A matching
+# controlling terminal covers typed input; process ancestry covers agent CLIs,
+# whose tool calls have no terminal at all. Exporting TMUX_PANE satisfies
+# neither, because a worker cannot rewrite its own process ancestry.
+_pane_owns_current_process() {
+  local pane="$1" pane_tty pane_pid current_tty pid parent hops=0
+
+  pane_tty=$(tmux display-message -p -t "$pane" '#{pane_tty}' 2>/dev/null)
   current_tty=$(tty 2>/dev/null || true)
-  [ -n "$current_tty" ] && [ "$current_tty" = "$pane_tty" ] ||
-    _die "current terminal does not match pane: $pane"
+  if [ -n "$pane_tty" ] && [ "$current_tty" = "$pane_tty" ]; then
+    return 0
+  fi
+
+  pane_pid=$(tmux display-message -p -t "$pane" '#{pane_pid}' 2>/dev/null)
+  case "$pane_pid" in
+    '' | *[!0-9]*) return 1 ;;
+  esac
+
+  pid=$$
+  while [ "$hops" -lt 64 ]; do
+    [ "$pid" = "$pane_pid" ] && return 0
+    parent=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')
+    case "$parent" in
+      '' | 0 | 1 | *[!0-9]*) return 1 ;;
+    esac
+    pid="$parent"
+    hops=$((hops + 1))
+  done
+  return 1
+}
+
+_current_worker_name() {
+  local pane="${TMUX_PANE:-}" worker count
+
+  if [ ! -f "$REG" ]; then
+    _error "team directory is not initialized: $TEAM_DIR"
+    return 1
+  fi
+  if [ -z "$pane" ]; then
+    _error "worktree updates must run inside a registered worker pane"
+    return 1
+  fi
+  if ! tmux display-message -p -t "$pane" '#{pane_id}' >/dev/null 2>&1; then
+    _error "no such pane: $pane"
+    return 1
+  fi
+  if ! _pane_owns_current_process "$pane"; then
+    _error "current process does not run inside pane: $pane"
+    return 1
+  fi
 
   worker=$(awk -F'\t' -v p="$pane" '$2 == p { print $1 }' "$REG")
   count=$(printf '%s\n' "$worker" | awk 'NF { count++ } END { print count + 0 }')
-  [ "$count" -eq 1 ] ||
-    _die "current pane is not registered to exactly one worker: $pane"
+  if [ "$count" -ne 1 ]; then
+    _error "current pane is not registered to exactly one worker: $pane"
+    return 1
+  fi
   printf '%s\n' "$worker"
 }
 
@@ -196,9 +372,8 @@ _parse_worktree_options() {
   done
 }
 
-_resolve_worktree_state() {
-  local registered root branch
-  local mr_pattern='^(!|#)[1-9][0-9]*$'
+_resolve_worktree_pane() {
+  local registered
 
   registered=$(_registered_pane "$WT_NAME")
   if [ -z "$WT_PANE" ]; then
@@ -209,6 +384,13 @@ _resolve_worktree_state() {
   if ! tmux display-message -p -t "$WT_PANE" '#{pane_id}' >/dev/null 2>&1; then
     _die "no such pane: $WT_PANE"
   fi
+}
+
+# Reads the live checkout. Skipped when closing a row, because removing the
+# worktree is the normal end of its lifecycle and a terminal row keeps the
+# directory and branch already recorded at registration time.
+_resolve_worktree_git() {
+  local root branch
 
   [ -n "$WT_DIR" ] || WT_DIR="$PWD"
   if ! root=$(git -C "$WT_DIR" rev-parse --show-toplevel 2>/dev/null); then
@@ -223,6 +405,10 @@ _resolve_worktree_state() {
   else
     _die "worktree must have an attached branch: $WT_DIR"
   fi
+}
+
+_validate_worktree_fields() {
+  local mr_pattern='^(!|#)[1-9][0-9]*$'
 
   _validate_board_field "worker name" "$WT_NAME"
   _validate_board_field "pane id" "$WT_PANE"
@@ -303,6 +489,36 @@ _append_worktree_snapshot() {
     >> "$WORKTREE_BOARD"
 }
 
+_agent_resume_workdir() {
+  local role="$1" name="$2" registered_dir="$3" row
+
+  if [ "$role" = "worker" ]; then
+    row=$(_latest_worktree_row "$name")
+    if [ -n "$row" ]; then
+      IFS=$'\t' read -r _ _ _ registered_dir _ _ <<< "$row"
+    fi
+  fi
+  printf '%s\n' "$registered_dir"
+}
+
+_agent_resume_command() {
+  local cli="$1" session_id="$2" workdir="$3" executable command
+
+  executable=$(command -v "$cli") ||
+    return 1
+  case "$cli" in
+    claude)
+      printf -v command '%q --resume %q' "$executable" "$session_id"
+      ;;
+    codex)
+      printf -v command '%q resume -C %q %q' \
+        "$executable" "$workdir" "$session_id"
+      ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "$command"
+}
+
 valid_task_id() {
   [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
 }
@@ -367,19 +583,66 @@ show_receipt() {
     "$artifact"
 }
 
-cmd="${1:-help}"
-shift || true
 case "$cmd" in
-  init)
+  init) # init [name] [task] [--force]
+    init_force=0
+    init_name=""
+    init_task=""
+    for arg in "$@"; do
+      case "$arg" in
+        --force) init_force=1 ;;
+        *)
+          if [ -z "$init_name" ]; then
+            init_name="$arg"
+          elif [ -z "$init_task" ]; then
+            init_task="$arg"
+          else
+            _die "unexpected init argument: $arg"
+          fi
+          ;;
+        esac
+    done
+    if [ "${team_dir_parent##*/}" = ".teams" ] &&
+      [ "$init_name" != "$team_dir_name" ]; then
+      _die "team name must match its .teams directory: $team_dir_name"
+    fi
+    # Keyed on control-plane files, not on the directory: an operator may create
+    # an empty control directory first, but an initialized team is never
+    # silently replaced.
+    if [ "$init_force" -eq 0 ]; then
+      for existing in "$TEAM_META" "$REG" "$BOARD" "$WORKTREE_BOARD"; do
+        [ -e "$existing" ] &&
+          _die "team already exists: $TEAM_DIR (pass --force to reset)"
+      done
+    fi
     mkdir -p "$ARTIFACTS" "$RECEIPTS" "$TEAM_DIR/tasks"
     : > "$REG"
+    : > "$AGENTS"
     : > "$BOARD"
     : > "$WORKTREE_BOARD"
-    [ -n "${1:-}" ] && TEAM_NAME="$1"
-    [ -n "${2:-}" ] && TEAM_TASK="$2"
+    # A reset team must not inherit the previous team's frozen mode.
+    [ -e "$TEAM_DIR/mode.md" ] && unlink "$TEAM_DIR/mode.md"
+    [ -e "$RESUME_REPORT" ] && unlink "$RESUME_REPORT"
+    [ -n "$init_name" ] && TEAM_NAME="$init_name"
+    [ -n "$init_task" ] && TEAM_TASK="$init_task"
+    TEAM_STATUS="active"
     _save_meta
     _apply_window_title
     echo "$TEAM_DIR"
+    ;;
+  teams)
+    printf 'TEAM\tSTATUS\tDIR\n'
+    if [ -d "$TEAM_ROOT" ]; then
+      for team_path in "$TEAM_ROOT"/*; do
+        [ -f "$team_path/team-meta.env" ] || continue
+        team_name="${team_path##*/}"
+        team_status=$(awk -F= \
+          '$1 == "TEAM_STATUS" { print substr($0, index($0, "=") + 1); exit }' \
+          "$team_path/team-meta.env")
+        printf '%s\t%s\t%s\n' \
+          "$team_name" "${team_status:-unknown}" "$team_path"
+      done
+    fi
     ;;
   ui) # ui <session> — pane-id borders + status bar, scoped to the team session
     s="$1"
@@ -397,7 +660,37 @@ case "$cmd" in
     tmux set-window-option -t "$w" main-pane-width "$width"
     tmux select-layout -t "$w" main-vertical
     ;;
-  register | register-worker) # register-worker <name> <pane-id>
+  register-leader) # register-leader <name> <pane> <cli> <session-id> [dir]
+    [ "$#" -ge 4 ] && [ "$#" -le 5 ] ||
+      _die "register-leader requires name, pane, CLI, session ID, and optional directory"
+    _register_agent_session leader "$@"
+    tmux select-pane -t "$2" -T "$1"
+    ;;
+  record-agent-session) # record-agent-session <role> <name> <cli> <id> [dir]
+    [ "$#" -ge 4 ] && [ "$#" -le 5 ] ||
+      _die "record-agent-session requires role, name, CLI, session ID, and optional directory"
+    agent_role="$1"
+    agent_name="$2"
+    agent_cli="$3"
+    agent_session_id="$4"
+    agent_dir="${5:-}"
+    case "$agent_role" in
+      worker)
+        agent_pane=$(_registered_pane "$agent_name")
+        [ -n "$agent_pane" ] ||
+          _die "worker pane is not registered: $agent_name"
+        ;;
+      leader)
+        agent_pane="${TMUX_PANE:-}"
+        [ -n "$agent_pane" ] ||
+          _die "leader session recording must run inside its tmux pane"
+        ;;
+      *) _die "invalid agent role: $agent_role" ;;
+    esac
+    _register_agent_session "$agent_role" "$agent_name" "$agent_pane" \
+      "$agent_cli" "$agent_session_id" "$agent_dir"
+    ;;
+  register | register-worker) # register-worker <name> <pane> [cli session-id [dir]]
     _validate_board_field "worker name" "$1"
     _validate_board_field "pane id" "$2"
     [ -z "$(_registered_pane "$1")" ] ||
@@ -409,18 +702,213 @@ case "$cmd" in
       echo "no such pane: $2" >&2
       exit 1
     fi
+    if [ "$#" -gt 2 ]; then
+      [ "$#" -ge 4 ] && [ "$#" -le 5 ] ||
+        _die "register-worker session metadata requires CLI, session ID, and optional directory"
+      _register_agent_session worker "$@"
+    fi
     tmux select-pane -t "$2" -T "$1"
     printf '%s\t%s\n' "$1" "$2" >> "$REG"
     ;;
+  close)
+    [ -f "$TEAM_META" ] || _die "team is not initialized: $TEAM_DIR"
+    [ "$TEAM_STATUS" = "active" ] ||
+      _die "team is not active: $TEAM_NAME ($TEAM_STATUS)"
+    [ -s "$AGENTS" ] ||
+      _die "leader must record agent sessions before closing: $TEAM_NAME"
+    leader_count=$(awk -F'\t' \
+      '$1 == "leader" { count++ } END { print count + 0 }' "$AGENTS")
+    [ "$leader_count" -eq 1 ] ||
+      _die "team must have exactly one recorded leader: $leader_count"
+    unrecorded_worker=$(awk -F'\t' '
+      FNR == NR {
+        if ($1 == "worker") recorded[$2] = 1
+        next
+      }
+      !recorded[$1] { print $1; exit }
+    ' "$AGENTS" "$REG")
+    [ -z "$unrecorded_worker" ] ||
+      _die "worker has no recorded agent session: $unrecorded_worker"
+
+    if [ -f "$AGENTS" ]; then
+      agents_closed="$TEAM_DIR/.agents.closed.$$"
+      awk -F'\t' 'BEGIN { OFS = FS } { $7 = "closed"; print }' \
+        "$AGENTS" > "$agents_closed"
+      mv "$agents_closed" "$AGENTS"
+    fi
+    TEAM_STATUS="closed"
+    _save_meta
+    printf 'team\t%s\tclosed\t%s\n' \
+      "$TEAM_NAME" "${TEAM_TMUX_SESSION:--}"
+
+    if [ -n "$TEAM_TMUX_SESSION" ] &&
+      tmux has-session -t "=$TEAM_TMUX_SESSION" 2>/dev/null; then
+      tmux kill-session -t "=$TEAM_TMUX_SESSION" ||
+        _die "failed to close tmux session: $TEAM_TMUX_SESSION"
+    fi
+    ;;
+  resume)
+    [ -f "$TEAM_META" ] || _die "team is not initialized: $TEAM_DIR"
+    [ "$TEAM_STATUS" = "closed" ] ||
+      _die "team is not closed: $TEAM_NAME ($TEAM_STATUS)"
+    [ -n "$TEAM_TMUX_SESSION" ] ||
+      _die "team has no recorded tmux session: $TEAM_NAME"
+    [ -s "$AGENTS" ] ||
+      _die "team has no recorded agent sessions: $TEAM_NAME"
+    if tmux has-session -t "=$TEAM_TMUX_SESSION" 2>/dev/null; then
+      _die "tmux session already exists: $TEAM_TMUX_SESSION"
+    fi
+
+    leader_count=$(awk -F'\t' \
+      '$1 == "leader" { count++ } END { print count + 0 }' "$AGENTS")
+    [ "$leader_count" -eq 1 ] ||
+      _die "team must have exactly one recorded leader: $leader_count"
+
+    resume_plan="$TEAM_DIR/.resume-plan.$$"
+    agents_next="$TEAM_DIR/.agents.next.$$"
+    workers_next="$TEAM_DIR/.workers.next.$$"
+    worktrees_next="$TEAM_DIR/.worktrees.next.$$"
+    report_next="$TEAM_DIR/.resume-report.next.$$"
+    : > "$resume_plan"
+    leader_ready=0
+
+    while IFS=$'\t' read -r role name cli session_id registered_dir \
+      old_pane old_state; do
+      resume_dir=$(_agent_resume_workdir \
+        "$role" "$name" "$registered_dir")
+      if [ ! -d "$resume_dir" ]; then
+        printf '%s\t%s\t%s\t%s\t%s\tskipped\tmissing-worktree\t-\n' \
+          "$role" "$name" "$cli" "$session_id" "$resume_dir" \
+          >> "$resume_plan"
+        continue
+      fi
+      if ! resume_command=$(_agent_resume_command \
+        "$cli" "$session_id" "$resume_dir"); then
+        printf '%s\t%s\t%s\t%s\t%s\tskipped\tmissing-cli\t-\n' \
+          "$role" "$name" "$cli" "$session_id" "$resume_dir" \
+          >> "$resume_plan"
+        continue
+      fi
+      [ "$role" != "leader" ] || leader_ready=1
+      printf '%s\t%s\t%s\t%s\t%s\tresume\t-\t%s\n' \
+        "$role" "$name" "$cli" "$session_id" "$resume_dir" \
+        "$resume_command" >> "$resume_plan"
+    done < <(
+      awk -F'\t' '
+        $1 == "leader" { leader[++leaders] = $0 }
+        $1 == "worker" { worker[++workers] = $0 }
+        END {
+          for (i = 1; i <= leaders; i++) print leader[i]
+          for (i = 1; i <= workers; i++) print worker[i]
+        }
+      ' "$AGENTS"
+    )
+
+    if [ "$leader_ready" -ne 1 ]; then
+      leader_problem=$(awk -F'\t' '$1 == "leader" { print $7; exit }' \
+        "$resume_plan")
+      unlink "$resume_plan"
+      _die "recorded leader cannot be resumed: ${leader_problem:-unknown}"
+    fi
+
+    : > "$agents_next"
+    : > "$workers_next"
+    cp "$WORKTREE_BOARD" "$worktrees_next"
+    printf 'NAME\tROLE\tCLI\tSESSION_ID\tWORKDIR\tSTATUS\tPANE_ID\tDETAIL\n' \
+      > "$report_next"
+    session_created=0
+    resumed_workers=0
+    window_id=""
+
+    while IFS=$'\t' read -r role name cli session_id resume_dir action \
+      detail resume_command; do
+      if [ "$action" = "skipped" ]; then
+        pane="-"
+        state="skipped"
+      elif [ "$session_created" -eq 0 ]; then
+        if ! pane=$(tmux new-session -d -P -F '#{pane_id}' \
+          -s "$TEAM_TMUX_SESSION" -c "$resume_dir" "$resume_command" 2>&1); then
+          for resume_temp in \
+            "$resume_plan" "$agents_next" "$workers_next" "$worktrees_next" \
+            "$report_next"; do
+            [ ! -e "$resume_temp" ] || unlink "$resume_temp"
+          done
+          _die "failed to resume leader session: $pane"
+        fi
+        session_created=1
+        window_id=$(tmux display-message -p -t "$pane" '#{window_id}')
+        state="active"
+      else
+        if ! pane=$(tmux split-window -d -P -F '#{pane_id}' \
+          -t "$window_id" -c "$resume_dir" "$resume_command" 2>&1); then
+          tmux kill-session -t "=$TEAM_TMUX_SESSION" 2>/dev/null || true
+          for resume_temp in \
+            "$resume_plan" "$agents_next" "$workers_next" "$worktrees_next" \
+            "$report_next"; do
+            [ ! -e "$resume_temp" ] || unlink "$resume_temp"
+          done
+          _die "failed to resume agent $name: $pane"
+        fi
+        state="active"
+      fi
+
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$role" "$name" "$cli" "$session_id" "$resume_dir" "$pane" "$state" \
+        >> "$agents_next"
+      if [ "$role" = "worker" ] && [ "$state" = "active" ]; then
+        printf '%s\t%s\n' "$name" "$pane" >> "$workers_next"
+        resumed_workers=$((resumed_workers + 1))
+        worktree_row=$(_latest_worktree_row "$name")
+        if [ -n "$worktree_row" ]; then
+          IFS=$'\t' read -r _ _ worktree_mr worktree_dir worktree_branch \
+            worktree_state <<< "$worktree_row"
+          printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+            "$name" "$pane" "$worktree_mr" "$worktree_dir" \
+            "$worktree_branch" "$worktree_state" >> "$worktrees_next"
+        fi
+      fi
+      [ "$state" != "active" ] ||
+        tmux select-pane -t "$pane" -T "$name"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$name" "$role" "$cli" "$session_id" "$resume_dir" \
+        "$([ "$state" = "active" ] && printf resumed || printf skipped)" \
+        "$pane" "$detail" >> "$report_next"
+    done < "$resume_plan"
+
+    mv "$agents_next" "$AGENTS"
+    mv "$workers_next" "$REG"
+    mv "$worktrees_next" "$WORKTREE_BOARD"
+    mv "$report_next" "$RESUME_REPORT"
+    unlink "$resume_plan"
+    TEAM_STATUS="active"
+    _save_meta
+
+    tmux set-option -w -t "$window_id" pane-border-status top \
+      2>/dev/null || true
+    tmux set-option -w -t "$window_id" pane-border-format \
+      ' #{?pane_active,#[reverse],}#{pane_id} #{pane_title} idx=#{pane_index} #{pane_current_command} #{pane_current_path} #[default]' \
+      2>/dev/null || true
+    if [ "$resumed_workers" -gt 0 ]; then
+      tmux set-window-option -t "$window_id" main-pane-width 33% \
+        2>/dev/null || true
+      tmux select-layout -t "$window_id" main-vertical 2>/dev/null || true
+    fi
+    cat "$RESUME_REPORT"
+    ;;
   worktree-register) # worktree-register [--mr id] [--status s] [--dir path]
     WT_PANE="${TMUX_PANE:-}"
-    WT_NAME=$(_current_worker_name)
+    WT_NAME=$(_current_worker_name) || exit 1
     WT_MR="-"
     WT_DIR=""
     WT_BRANCH=""
+    WT_COMMON_DIR=""
     WT_STATUS="working"
     _parse_worktree_options register "$@"
-    _resolve_worktree_state
+    _resolve_worktree_pane
+    _resolve_worktree_git
+    _validate_worktree_fields
+    [ "$WT_STATUS" = "working" ] ||
+      _die "worktree registration must start at working: $WT_STATUS"
     _acquire_worktree_lock
     _ensure_worktree_registration_available
     _check_worktree_conflicts
@@ -429,16 +917,19 @@ case "$cmd" in
     ;;
   worktree-update) # worktree-update [--mr id] [--status s]
     WT_PANE="${TMUX_PANE:-}"
-    WT_NAME=$(_current_worker_name)
+    WT_NAME=$(_current_worker_name) || exit 1
+    WT_COMMON_DIR=""
     _acquire_worktree_lock
     row=$(_latest_worktree_row "$WT_NAME")
     [ -n "$row" ] || _die "unregistered worktree worker: $WT_NAME"
     IFS=$'\t' read -r _ WT_PANE WT_MR WT_DIR WT_BRANCH WT_STATUS <<< "$row"
     WT_PREVIOUS_STATUS="$WT_STATUS"
     _parse_worktree_options update "$@"
-    _resolve_worktree_state
+    _resolve_worktree_pane
+    [ "$WT_STATUS" = "closed" ] || _resolve_worktree_git
+    _validate_worktree_fields
     _validate_worktree_transition "$WT_PREVIOUS_STATUS" "$WT_STATUS"
-    _check_worktree_conflicts
+    [ "$WT_STATUS" = "closed" ] || _check_worktree_conflicts
     _append_worktree_snapshot
     _release_worktree_lock
     ;;
@@ -462,7 +953,7 @@ case "$cmd" in
       mode_contract=" Read $TEAM_DIR/mode.md completely before starting and follow its additional scenario constraints."
     fi
     tmux send-keys -t "$pane" -l \
-      "$prompt Read $WORKER_SKILL completely before starting and follow it as the interaction contract.$mode_contract Write all substantive work to $ARTIFACTS/$id.md. Write only the bounded control receipt to $RECEIPTS/$id.md and make its last line exactly: DONE $id"
+      "$prompt Read $WORKER_SKILL completely before starting and follow it as the interaction contract.$mode_contract Run every teamctl.sh command with TEAM_DIR=$TEAM_DIR prefixed, from any working directory. Write all substantive work to $ARTIFACTS/$id.md. Write only the bounded control receipt to $RECEIPTS/$id.md and make its last line exactly: DONE $id"
     sleep 0.5
     tmux send-keys -t "$pane" Enter
     printf '%s\t%s\n' "$id" "$name" >> "$BOARD"
@@ -498,6 +989,8 @@ case "$cmd" in
     done < "$REG"
     ;;
   status) # liveness metadata + control boards; never pane text or artifacts
+    printf 'team\t%s\t%s\t%s\n' \
+      "${TEAM_NAME:-$team_dir_name}" "$TEAM_STATUS" "${TEAM_TMUX_SESSION:--}"
     while IFS=$'\t' read -r name pane; do
       live=$(tmux display-message -p -t "$pane" \
         '#{?pane_dead,dead,alive}:#{pane_current_command}' 2>/dev/null)
@@ -519,7 +1012,9 @@ case "$cmd" in
     _apply_window_title
     ;;
   *)
-    echo "usage: teamctl.sh init [name] [task] | ui <session> | layout <window> [main-width] | register-worker <name> <pane> | worktree-register [--mr id] [--status status] [--dir path] | worktree-update [--mr id] [--status status] | worktree-board | dispatch <worker> <id> '<prompt>' | wait <timeout> <id>... | show-receipt <id> | idle | status | set-title [name] [task]" >&2
+    printf '%s\n' \
+      "usage: teamctl.sh [--team name] init <name> [task] [--force] | teams | ui <session> | layout <window> [main-width] | register-leader <name> <pane> <cli> <uuid> [dir] | register-worker <name> <pane> [<cli> <uuid> [dir]] | record-agent-session <role> <name> <cli> <uuid> [dir] | close | resume | worktree-register [--mr id] [--status status] [--dir path] | worktree-update [--mr id] [--status status] | worktree-board | dispatch <worker> <id> '<prompt>' | wait <timeout> <id>... | show-receipt <id> | idle | status | set-title [name] [task]" \
+      >&2
     exit 1
     ;;
 esac

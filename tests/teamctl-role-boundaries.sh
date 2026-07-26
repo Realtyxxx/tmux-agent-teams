@@ -69,6 +69,11 @@ case "$dispatch_log" in
   *) fail "dispatch did not separate work artifacts from control receipts" ;;
 esac
 
+case "$dispatch_log" in
+  *"TEAM_DIR=$TEAM_DIR"*) ;;
+  *) fail "dispatch did not pin the control directory for the worker" ;;
+esac
+
 mkdir -p "$TEAM_DIR/artifacts" "$TEAM_DIR/receipts"
 printf 'private implementation details\nDONE impl-1\n' \
   > "$TEAM_DIR/artifacts/impl-1.md"

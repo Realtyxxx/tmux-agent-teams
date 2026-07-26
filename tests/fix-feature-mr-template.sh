@@ -10,7 +10,7 @@ MODE_INDEX="$MODE_ROOT/INDEX.md"
 MODE_SOURCE="$MODE_ROOT/fix-feature-mr/MODE.md"
 APPLY_MODE="$MODE_ROOT/apply-mode.sh"
 TEST_ROOT=$(mktemp -d "/private/tmp/fix-feature-mr-template.XXXXXX")
-CONTROL_DIR="$TEST_ROOT/.tmux-agent-team"
+CONTROL_DIR="$TEST_ROOT/.teams/mode-test"
 INVALID_DIR="$TEST_ROOT/team"
 
 cleanup() {
@@ -38,7 +38,7 @@ grep -q 'modes/INDEX.md' "$MAIN_SKILL" ||
   fail "main skill does not load the mode trigger index"
 grep -q 'modes/<mode>/MODE.md' "$MAIN_SKILL" ||
   fail "main skill does not define how to load a selected mode"
-grep -q '.tmux-agent-team/mode.md' "$MAIN_SKILL" ||
+grep -q '.teams/<team-name>/mode.md' "$MAIN_SKILL" ||
   fail "main skill does not freeze the selected mode"
 grep -q 'fix-feature-mr' "$MODE_INDEX" ||
   fail "mode index does not register fix-feature-mr"
@@ -49,7 +49,7 @@ mkdir -p "$CONTROL_DIR"
 TEAM_DIR="$CONTROL_DIR" "$TEAMCTL" init mode-test fix-feature >/dev/null
 TEAM_DIR="$CONTROL_DIR" bash "$APPLY_MODE" fix-feature-mr >/dev/null
 GENERATED="$CONTROL_DIR/mode.md"
-[ -f "$GENERATED" ] || fail "mode was not created under .tmux-agent-team"
+[ -f "$GENERATED" ] || fail "mode was not created under .teams/mode-test"
 cmp -s "$MODE_SOURCE" "$GENERATED" ||
   fail "runtime mode snapshot differs from the selected source"
 
@@ -73,7 +73,7 @@ fi
 
 if TEAM_DIR="$INVALID_DIR" bash "$APPLY_MODE" fix-feature-mr \
   >/dev/null 2>&1; then
-  fail "mode application accepted a directory not named .tmux-agent-team"
+  fail "mode application accepted a directory outside .teams/<team-name>"
 fi
 
 if grep -q 'fix-feature-mr\\|fix/feature MR template' "$MAIN_SKILL"; then

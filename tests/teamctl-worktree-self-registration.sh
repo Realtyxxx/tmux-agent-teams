@@ -8,6 +8,7 @@ TEST_ROOT=$(mktemp -d "/private/tmp/teamctl-self-register.XXXXXX")
 TEAM_DIR_UNDER_TEST="$TEST_ROOT/.tmux-agent-team"
 WORKTREE="$TEST_ROOT/feature-repo"
 OTHER_WORKTREE="$TEST_ROOT/other-repo"
+THIRD_WORKTREE="$TEST_ROOT/third-repo"
 DETACHED_WORKTREE="$TEST_ROOT/detached-repo"
 SESSION="teamctl-self-register-$$"
 
@@ -28,13 +29,24 @@ run_in_pane() {
   local pane="$1" tag="$2"
   local output="$TEST_ROOT/$tag.out"
   local result="$TEST_ROOT/$tag.rc"
-  local claimed_pane="" command arg quoted
+  local claimed_pane="" agent_context=0 command arg quoted
   shift 2
 
-  if [ "${1:-}" = "--claim-pane" ]; then
-    claimed_pane="$2"
-    shift 2
-  fi
+  while :; do
+    case "${1:-}" in
+      --claim-pane)
+        claimed_pane="$2"
+        shift 2
+        ;;
+      # Agent CLIs run shell commands through their own tool harness, so stdin
+      # is not the pane terminal. Reproduce that instead of typed input.
+      --agent-context)
+        agent_context=1
+        shift
+        ;;
+      *) break ;;
+    esac
+  done
 
   printf -v command 'TEAM_DIR=%q' "$TEAM_DIR_UNDER_TEST"
   if [ -n "${RUN_LOCK_ATTEMPTS:-}" ]; then
@@ -51,6 +63,9 @@ run_in_pane() {
     printf -v quoted '%q' "$arg"
     command="$command $quoted"
   done
+  if [ "$agent_context" -eq 1 ]; then
+    command="$command < /dev/null"
+  fi
   printf -v quoted '%q' "$output"
   command="$command > $quoted 2>&1"
   printf -v quoted '%q' "$result"
@@ -68,9 +83,10 @@ run_in_pane() {
   RUN_STATUS=$(cat "$result")
 }
 
-mkdir -p "$WORKTREE" "$OTHER_WORKTREE" "$DETACHED_WORKTREE"
+mkdir -p "$WORKTREE" "$OTHER_WORKTREE" "$THIRD_WORKTREE" "$DETACHED_WORKTREE"
 git -C "$WORKTREE" init -q -b feature/self-register
 git -C "$OTHER_WORKTREE" init -q -b feature/other
+git -C "$THIRD_WORKTREE" init -q -b feature/third
 git -C "$DETACHED_WORKTREE" init -q -b feature/detached
 git -C "$DETACHED_WORKTREE" config user.email test@example.com
 git -C "$DETACHED_WORKTREE" config user.name "Teamctl Test"
@@ -92,10 +108,11 @@ if TEAM_DIR="$TEAM_DIR_UNDER_TEST" "$TEAMCTL" register-worker mallory "$PANE" \
 fi
 TEAM_DIR="$TEAM_DIR_UNDER_TEST" "$TEAMCTL" register-worker bob "$BOB_PANE"
 
-run_in_pane "$PANE" register worktree-register --dir "$WORKTREE"
+run_in_pane "$PANE" register --agent-context \
+  worktree-register --dir "$WORKTREE"
 
 [ "$RUN_STATUS" -eq 0 ] ||
-  fail "worker could not self-register from its pane: $RUN_OUTPUT"
+  fail "worker could not self-register from an agent tool call: $RUN_OUTPUT"
 
 BOARD_OUTPUT=$(TEAM_DIR="$TEAM_DIR_UNDER_TEST" "$TEAMCTL" worktree-board)
 case "$BOARD_OUTPUT" in
@@ -110,6 +127,19 @@ run_in_pane "$PANE" explicit-pane \
 
 [ "$RUN_STATUS" -ne 0 ] ||
   fail "worktree-register accepted an explicit pane override"
+
+run_in_pane "$BOB_PANE" register-past-working \
+  worktree-register \
+  --dir "$THIRD_WORKTREE" \
+  --mr '#9' \
+  --status merged
+
+[ "$RUN_STATUS" -ne 0 ] ||
+  fail "worktree-register started past the working state"
+
+case $(TEAM_DIR="$TEAM_DIR_UNDER_TEST" "$TEAMCTL" worktree-board) in
+  *$'\tmerged'*) fail "a rejected registration reached the board" ;;
+esac
 
 run_in_pane "$PANE" move-row \
   worktree-update \
@@ -216,5 +246,25 @@ run_in_pane "$PANE" stale-lock \
   fail "stale worktree lock was not recovered: $RUN_OUTPUT"
 [ ! -e "$TEAM_DIR_UNDER_TEST/.worktrees.lock" ] ||
   fail "stale worktree lock remained after update"
+
+mv "$OTHER_WORKTREE" "$TEST_ROOT/other-repo-removed"
+
+run_in_pane "$PANE" close-after-removal \
+  worktree-update \
+  --status closed
+[ "$RUN_STATUS" -eq 0 ] ||
+  fail "worker could not close an already removed worktree: $RUN_OUTPUT"
+
+BOARD_OUTPUT=$(TEAM_DIR="$TEAM_DIR_UNDER_TEST" "$TEAMCTL" worktree-board)
+case "$BOARD_OUTPUT" in
+  *$'alice\t'"$PANE"$'\t-\t'"$OTHER_WORKTREE"$'\tfeature/other\tclosed'*) ;;
+  *) fail "closed row did not keep its recorded worktree: $BOARD_OUTPUT" ;;
+esac
+
+run_in_pane "$PANE" third-worktree \
+  worktree-register \
+  --dir "$THIRD_WORKTREE"
+[ "$RUN_STATUS" -eq 0 ] ||
+  fail "closing a removed worktree did not release the seat: $RUN_OUTPUT"
 
 printf 'PASS: worker identity, ownership, and lifecycle are enforced\n'
