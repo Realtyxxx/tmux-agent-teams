@@ -27,9 +27,15 @@ skills/tmux-agent-teams/
 │       ├── runtime.sh
 │       ├── instructions.md
 │       └── model-catalog.json
-└── release-profiles/
+└── worker/
+    └── SKILL.md
+
+packaging/profiles/
     ├── standard.files
     └── with-agy.files
+
+scripts/
+    └── package-releases.sh
 ```
 
 `teamctl.sh` resolves only fixed runtime names and sources only
@@ -57,8 +63,8 @@ working tree. Both variants use the same commit and common-file list:
 - `standard`: common files plus Claude and Codex runtimes.
 - `with-agy`: the standard profile plus the agy runtime and model catalog.
 
-Archive names contain the profile, optional version, and 12-character commit.
-The script writes `SHA256SUMS` and rejects:
+Archive names contain the profile and 12-character commit. The script writes
+`SHA256SUMS` and rejects:
 
 - tracked working-tree changes;
 - files absent from the selected commit;

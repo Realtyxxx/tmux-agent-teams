@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-07-26
+
+### New Features
+
+- **Runtime adapters:** CLI-specific launch, model, session-ID, and resume
+  behavior now lives under `runtimes/<name>/`, while Team state and tmux
+  orchestration remain in the common control plane.
+- **Manifest-driven releases:** one commit now produces `standard` and
+  `with-agy` archives with shared core files and a generated SHA-256 manifest.
+- **Explicit resume capability:** non-resumable runtimes can participate in a
+  Team and are skipped with `unsupported-resume`; a non-resumable Leader blocks
+  resume.
+
+### Improvements
+
+- Standard releases contain only Claude and Codex runtime files, with no agy
+  implementation, model catalog, or documentation markers.
+- Release packaging no longer depends on a long-lived `with-agy` branch, so
+  optional runtimes cannot fall behind common Worker, mode, worktree, or resume
+  changes.
+- `teamctl.sh runtimes` reports the installed adapters, session-ID kind,
+  resume capability, and instructions path.
+
+### Validation
+
+- Added runtime contract coverage for resumable and non-resumable agents.
+- Added release-profile coverage for archive membership, checksums, runtime
+  discovery, and byte-identical common files.
+
 ## 2026-07-25
 
 ### New Features

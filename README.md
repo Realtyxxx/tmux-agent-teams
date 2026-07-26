@@ -35,22 +35,32 @@ the same repository.
 
 ## Persistent Team Sessions
 
-The Leader records the Claude Code or Codex session UUID, working directory,
-and tmux pane for itself and every Worker during team creation. A team cannot
-close until this registry is complete.
+The Leader records each installed runtime's session ID, working directory, and
+tmux pane for itself and every Worker during team creation. A team cannot close
+until this registry is complete. Runtime-specific launch, model, session, and
+resume behavior lives under `runtimes/<name>/`.
 
 `teamctl.sh close` persists lifecycle state and closes the tmux session.
-`teamctl.sh resume` creates fresh panes and resumes each recorded CLI session.
+`teamctl.sh resume` creates fresh panes and resumes each recorded runtime session.
 Deleted Worker worktrees are skipped and reported in
 `.teams/<team-name>/resume-report.tsv`; they do not prevent the remaining
 sessions from resuming.
 
-## Branches
+## Release Profiles
 
-| Branch     | Supported agent CLIs           |
-| ---------- | ------------------------------ |
-| `main`     | Claude Code and Codex.         |
-| `with-agy` | Claude Code, Codex, and `agy`. |
+Both release variants are assembled from one commit, so optional runtime
+support cannot drift from the common Team protocol.
+
+| Profile    | Included runtimes             |
+| ---------- | ----------------------------- |
+| `standard` | Claude Code and Codex         |
+| `with-agy` | Claude Code, Codex, and `agy` |
+
+Create both archives and their checksum manifest:
+
+```bash
+scripts/package-releases.sh
+```
 
 ## Install
 

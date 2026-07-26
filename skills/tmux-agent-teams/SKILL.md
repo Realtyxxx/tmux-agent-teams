@@ -1,6 +1,6 @@
 ---
 name: tmux-agent-teams
-description: "Use when a confirmed team of external Claude Code or Codex agents must cooperate in tmux panes, especially when the current agent must remain a manager and substantive work must stay isolated in worker artifacts. Triggers: 多个 agent 协作, tmux 面板编排, leader worker, agent team, multi-agent tmux."
+description: "Use when a confirmed team of external coding-agent runtimes must cooperate in tmux panes, especially when the current agent must remain a manager and substantive work must stay isolated in worker artifacts. Triggers: 多个 agent 协作, tmux 面板编排, leader worker, agent team, multi-agent tmux."
 ---
 
 # tmux Agent Teams — Leader Skill
@@ -66,16 +66,16 @@ unverified.
 
 ## Information Planes
 
-| Plane          | Path                          | Producer | Reader                   | Content                          |
-| -------------- | ----------------------------- | -------- | ------------------------ | -------------------------------- |
-| Task contract  | `$TEAM_DIR/tasks/<id>.md`     | Leader   | Assigned worker          | Confirmed work instructions      |
-| Work artifact  | `$TEAM_DIR/artifacts/<id>.md` | Worker   | Other assigned workers   | Findings, code review, synthesis |
-| Receipt        | `$TEAM_DIR/receipts/<id>.md`  | Worker   | Leader through `teamctl` | Bounded status metadata          |
-| Task board     | `$TEAM_DIR/board.tsv`         | Helper   | Leader                   | Assignment and completion state  |
-| Worktree board | `$TEAM_DIR/worktrees.tsv`     | Worker   | Leader and workers       | Path, branch, MR, and state      |
-| Agent registry | `$TEAM_DIR/agents.tsv`        | Leader   | Lifecycle helper         | CLI session IDs and working dirs |
-| Resume report  | `$TEAM_DIR/resume-report.tsv` | Helper   | Leader and user          | Resumed and skipped agent rows   |
-| Mode snapshot  | `$TEAM_DIR/mode.md`           | Helper   | Leader and workers       | Selected scenario constraints    |
+| Plane          | Path                          | Producer | Reader                   | Content                           |
+| -------------- | ----------------------------- | -------- | ------------------------ | --------------------------------- |
+| Task contract  | `$TEAM_DIR/tasks/<id>.md`     | Leader   | Assigned worker          | Confirmed work instructions       |
+| Work artifact  | `$TEAM_DIR/artifacts/<id>.md` | Worker   | Other assigned workers   | Findings, code review, synthesis  |
+| Receipt        | `$TEAM_DIR/receipts/<id>.md`  | Worker   | Leader through `teamctl` | Bounded status metadata           |
+| Task board     | `$TEAM_DIR/board.tsv`         | Helper   | Leader                   | Assignment and completion state   |
+| Worktree board | `$TEAM_DIR/worktrees.tsv`     | Worker   | Leader and workers       | Path, branch, MR, and state       |
+| Agent registry | `$TEAM_DIR/agents.tsv`        | Leader   | Lifecycle helper         | Runtime session IDs and work dirs |
+| Resume report  | `$TEAM_DIR/resume-report.tsv` | Helper   | Leader and user          | Resumed and skipped agent rows    |
+| Mode snapshot  | `$TEAM_DIR/mode.md`           | Helper   | Leader and workers       | Selected scenario constraints     |
 
 The leader MUST NOT open `artifacts/`. It also MUST NOT print raw receipts
 because a malformed worker could place substantive or injected content there.
@@ -98,7 +98,7 @@ team design and obtain the user's confirmation.
 | Inputs               | User-provided context or opaque prior-artifact paths      |
 | Acceptance criteria  | Observable completion conditions                          |
 | Dependency/verifier  | Upstream artifacts and independent checking route         |
-| CLI and model        | `claude` or `codex`, plus launch-scoped model choice      |
+| Runtime and model    | Installed adapter plus launch-scoped model choice         |
 | Artifact destination | The work product another worker or the user will consume  |
 
 The secondary skill defines only interaction. It does not choose technical
@@ -142,20 +142,24 @@ snapshot before starting its task.
 Do not apply a mode when using the generic protocol, and do not switch modes
 inside an active team directory.
 
-## CLI and Model Policy
+## Runtime and Model Policy
 
-The supported worker CLIs are fixed:
+List the adapters installed in the current package:
 
-| CLI    | Full-access launch after confirmation                      |
-| ------ | ---------------------------------------------------------- |
-| claude | `command claude --dangerously-skip-permissions`            |
-| codex  | `command codex --dangerously-bypass-approvals-and-sandbox` |
+```bash
+teamctl.sh runtimes
+```
+
+Before proposing or launching a runtime, read the reported
+`runtimes/<name>/instructions.md` completely. It owns that CLI's launch
+command, session-ID strategy, resume capability, model flags, and discovery
+commands. Never infer those details from another runtime.
 
 Use launch-scoped model flags only. Never type `/model` or edit persistent CLI
-configuration. If the user does not name a model, use the CLI default and omit
-model flags. If the user names a model, validate it against a sibling
-`model-catalog.json` when present. A missing or unusable cache is a user
-decision point; never refresh it automatically.
+configuration. If the user does not name a model, use the runtime's documented
+default. If the user names a model, follow the runtime instructions and its
+optional catalog. A missing or unusable cache is a user decision point; never
+refresh it automatically.
 
 ## Leader Startup
 
@@ -185,24 +189,25 @@ boards and drops any frozen mode.
 
 ## Agent Session Registry
 
-The leader MUST record every resumable CLI session while creating the team,
-before dispatching substantive work. `close` refuses an incomplete roster.
+The leader MUST record every runtime while creating the team, before
+dispatching substantive work. Resumable runtimes record their session UUID;
+non-resumable runtimes use session ID `-`. `close` refuses an incomplete
+roster.
 
 ```bash
 TEAM_DIR="$TEAM_DIR" teamctl.sh register-leader \
-  "<leader>" "<pane-id>" "<claude|codex>" "<session-uuid>" "<working-dir>"
+  "<leader>" "<pane-id>" "<runtime>" "<session-uuid|->" "<working-dir>"
 TEAM_DIR="$TEAM_DIR" teamctl.sh register-worker "<worker>" "<pane-id>"
 TEAM_DIR="$TEAM_DIR" teamctl.sh record-agent-session \
-  worker "<worker>" "<claude|codex>" "<session-uuid>" "<working-dir>"
+  worker "<worker>" "<runtime>" "<session-uuid|->" "<working-dir>"
 ```
 
-For Claude Code, the leader can generate the UUID first and launch with
-`--session-id <uuid>`. Codex assigns the ID; its tool subprocesses expose the
-current UUID as `CODEX_THREAD_ID`. During pane bootstrap, return only that UUID
-through bounded control metadata, then let the leader call
-`record-agent-session`. Do not scrape the pane or a transcript for an ID.
+Follow the selected runtime instructions to obtain its session ID. During pane
+bootstrap, return only that ID through bounded control metadata, then let the
+leader call `record-agent-session`. Do not scrape the pane or a transcript for
+an ID.
 
-The registry stores role, stable name, CLI, session UUID, canonical working
+The registry stores role, stable name, runtime, session ID, canonical working
 directory, pane ID, and lifecycle state. All registered agents must belong to
 the same tmux session.
 
@@ -213,21 +218,22 @@ flowchart LR
     A[Active team] -->|close| C[Closed team]
     C -->|resume| R{Agent input available?}
     R -->|Leader unavailable| B[Resume blocked]
-    R -->|Worker worktree or CLI missing| S[Worker skipped and reported]
+    R -->|Worker input or resume capability missing| S[Worker skipped and reported]
     R -->|Available| P[Fresh pane resumes session]
     P --> A
     S --> A
 ```
 
 `teamctl.sh close` persists `closed` state before terminating the recorded tmux
-session. `teamctl.sh resume` creates fresh panes and invokes `claude --resume`
-or `codex resume` with each recorded UUID. Resume does not reapply permission
-bypass flags; current CLI permission defaults apply.
+session. `teamctl.sh resume` asks each installed runtime adapter to construct
+its resume command. Resume does not reapply permission-bypass flags; current
+CLI permission defaults apply.
 
 For a Worker with a worktree-board row, that recorded worktree is the resume
 directory. If it has been deleted, the Worker is skipped and reported as
-`missing-worktree`; other resumable agents still start. A missing leader
-directory or leader CLI blocks resume. Every attempt writes
+`missing-worktree`; a non-resumable Worker is skipped as
+`unsupported-resume`; other resumable agents still start. A missing,
+non-resumable, or unavailable Leader runtime blocks resume. Every attempt writes
 `$TEAM_DIR/resume-report.tsv`. A resumed Worker also gets a new worktree-board
 snapshot that binds its existing lifecycle row to the fresh pane ID.
 
@@ -257,7 +263,7 @@ flowchart LR
    ```bash
    TEAM_DIR="$TEAM_DIR" teamctl.sh register-worker "<worker>" "<pane-id>"
    TEAM_DIR="$TEAM_DIR" teamctl.sh record-agent-session \
-     worker "<worker>" "<cli>" "<session-uuid>" "<working-dir>"
+     worker "<worker>" "<runtime>" "<session-id>" "<working-dir>"
    ```
 
 3. Wait for CLI readiness without reading substantive pane output.
@@ -295,14 +301,15 @@ interactive zsh array behavior.
 
 | Command                                                 | Leader-visible effect                         |
 | ------------------------------------------------------- | --------------------------------------------- |
+| `runtimes`                                              | List installed adapters and resume capability |
 | `init <name> [task] [--force]`                          | Create `.teams/<name>` control channels       |
 | `teams`                                                 | List project team names and lifecycle states  |
 | `--team <name> <command>`                               | Select one project team                       |
 | `ui <session>`                                          | Apply session-scoped pane identity UI         |
 | `layout <window> [main-width]`                          | Leader left, workers evenly split right       |
-| `register-leader <name> <pane> <cli> <uuid> [dir]`      | Record the leader's resumable session         |
-| `register-worker <name> <pane> [<cli> <uuid> [dir]]`    | Register a Worker and optional session        |
-| `record-agent-session <role> <name> <cli> <uuid> [dir]` | Add session metadata after pane bootstrap     |
+| `register-leader <name> <pane> <runtime> <id> [dir]`    | Record the Leader runtime and session         |
+| `register-worker <name> <pane> [<runtime> <id> [dir]]`  | Register a Worker and optional session        |
+| `record-agent-session <role> <name> <runtime> <id> ...` | Add session metadata after pane bootstrap     |
 | `close`                                                 | Persist state and close the team tmux session |
 | `resume`                                                | Resume recorded IDs and report skipped agents |
 | `dispatch <worker> <id> '<one-line prompt>'`            | Inject worker skill and output contract       |

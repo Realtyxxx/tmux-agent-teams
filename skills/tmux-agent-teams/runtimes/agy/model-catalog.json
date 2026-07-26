@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "runtime": "agy",
+  "refreshed_at": "2026-07-23T19:42:31+08:00",
+  "models": [
+    "Gemini 3.6 Flash (High)",
+    "Gemini 3.6 Flash (Medium)",
+    "Gemini 3.6 Flash (Low)",
+    "Gemini 3.5 Flash (High)",
+    "Gemini 3.5 Flash (Medium)",
+    "Gemini 3.5 Flash (Low)",
+    "Gemini 3.1 Pro (High)",
+    "Gemini 3.1 Pro (Low)",
+    "Claude Sonnet 4.6 (Thinking)",
+    "Claude Opus 4.6 (Thinking)",
+    "GPT-OSS 120B (Medium)"
+  ],
+  "team_default_model": "Gemini 3.5 Flash (Medium)",
+  "refresh_policy": "manual-only"
+}

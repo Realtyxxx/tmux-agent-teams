@@ -79,6 +79,7 @@ if [ "$cmd" != "teams" ]; then
 fi
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 WORKER_SKILL="${WORKER_SKILL:-$SCRIPT_DIR/worker/SKILL.md}"
+RUNTIME_DIR="$SCRIPT_DIR/runtimes"
 REG="$TEAM_DIR/workers.tsv"
 AGENTS="$TEAM_DIR/agents.tsv"
 BOARD="$TEAM_DIR/board.tsv"
@@ -126,6 +127,33 @@ _error() {
 _die() {
   _error "$*"
   exit 1
+}
+
+_clear_runtime() {
+  unset RUNTIME_NAME RUNTIME_RESUME_SUPPORTED RUNTIME_SESSION_ID_KIND
+  unset -f runtime_validate_session_id runtime_full_access_command \
+    runtime_build_resume_command 2>/dev/null || true
+}
+
+_load_runtime() {
+  local runtime="$1" runtime_file
+
+  _clear_runtime
+  [[ "$runtime" =~ ^[a-z][a-z0-9_-]*$ ]] || return 1
+  runtime_file="$RUNTIME_DIR/$runtime/runtime.sh"
+  [ -f "$runtime_file" ] || return 1
+  [ -f "$RUNTIME_DIR/$runtime/instructions.md" ] || return 1
+  # Runtime names are validated above, and only package-owned files below the
+  # fixed runtime directory are sourced.
+  . "$runtime_file" || return 1
+  [ "${RUNTIME_NAME:-}" = "$runtime" ] || return 1
+  case "${RUNTIME_RESUME_SUPPORTED:-}:${RUNTIME_SESSION_ID_KIND:-}" in
+    yes:uuid | no:none) ;;
+    *) return 1 ;;
+  esac
+  declare -F runtime_validate_session_id >/dev/null || return 1
+  declare -F runtime_full_access_command >/dev/null || return 1
+  declare -F runtime_build_resume_command >/dev/null || return 1
 }
 
 _release_worktree_lock() {
@@ -194,12 +222,8 @@ _registered_worker_for_pane() {
   awk -F'\t' -v p="$pane" '$2 == p { worker = $1 } END { print worker }' "$REG"
 }
 
-_valid_agent_session_id() {
-  [[ "$1" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]
-}
-
 _register_agent_session() {
-  local role="$1" name="$2" pane="$3" cli="$4" session_id="$5"
+  local role="$1" name="$2" pane="$3" runtime="$4" session_id="$5"
   local requested_dir="${6:-}" pane_meta tmux_session pane_dir workdir
   local existing
 
@@ -208,18 +232,15 @@ _register_agent_session() {
   _validate_board_field "agent role" "$role"
   _validate_board_field "agent name" "$name"
   _validate_board_field "pane id" "$pane"
-  _validate_board_field "agent CLI" "$cli"
+  _validate_board_field "agent runtime" "$runtime"
   _validate_board_field "agent session id" "$session_id"
   case "$role" in
     leader | worker) ;;
     *) _die "invalid agent role: $role" ;;
   esac
-  case "$cli" in
-    claude | codex) ;;
-    *) _die "unsupported agent CLI: $cli" ;;
-  esac
-  _valid_agent_session_id "$session_id" ||
-    _die "invalid agent session id: $session_id"
+  _load_runtime "$runtime" || _die "unsupported agent runtime: $runtime"
+  runtime_validate_session_id "$session_id" ||
+    _die "invalid $runtime session id: $session_id"
 
   pane_meta=$(tmux display-message -p -t "$pane" \
     '#{session_name}	#{pane_current_path}' 2>/dev/null) ||
@@ -233,7 +254,7 @@ _register_agent_session() {
 
   touch "$AGENTS"
   existing=$(awk -F'\t' -v n="$name" -v p="$pane" -v s="$session_id" '
-    $2 == n || $6 == p || $4 == s { print $2; exit }
+    $2 == n || $6 == p || (s != "-" && $4 == s) { print $2; exit }
   ' "$AGENTS")
   [ -z "$existing" ] ||
     _die "agent name, pane, or session is already registered: $existing"
@@ -250,7 +271,7 @@ _register_agent_session() {
   fi
 
   printf '%s\t%s\t%s\t%s\t%s\t%s\tactive\n' \
-    "$role" "$name" "$cli" "$session_id" "$workdir" "$pane" >> "$AGENTS"
+    "$role" "$name" "$runtime" "$session_id" "$workdir" "$pane" >> "$AGENTS"
 }
 
 # Proves the caller really runs inside the pane it claims. A matching
@@ -502,21 +523,11 @@ _agent_resume_workdir() {
 }
 
 _agent_resume_command() {
-  local cli="$1" session_id="$2" workdir="$3" executable command
+  local runtime="$1" session_id="$2" workdir="$3"
 
-  executable=$(command -v "$cli") ||
-    return 1
-  case "$cli" in
-    claude)
-      printf -v command '%q --resume %q' "$executable" "$session_id"
-      ;;
-    codex)
-      printf -v command '%q resume -C %q %q' \
-        "$executable" "$workdir" "$session_id"
-      ;;
-    *) return 1 ;;
-  esac
-  printf '%s\n' "$command"
+  [ "${RUNTIME_NAME:-}" = "$runtime" ] || return 1
+  [ "${RUNTIME_RESUME_SUPPORTED:-}" = "yes" ] || return 2
+  runtime_build_resume_command "$session_id" "$workdir"
 }
 
 valid_task_id() {
@@ -584,6 +595,19 @@ show_receipt() {
 }
 
 case "$cmd" in
+  runtimes)
+    printf 'RUNTIME\tRESUME\tSESSION_ID\tINSTRUCTIONS\n'
+    for runtime_file in "$RUNTIME_DIR"/*/runtime.sh; do
+      [ -f "$runtime_file" ] || continue
+      runtime_name="${runtime_file%/runtime.sh}"
+      runtime_name="${runtime_name##*/}"
+      _load_runtime "$runtime_name" || continue
+      printf '%s\t%s\t%s\t%s\n' \
+        "$RUNTIME_NAME" "$RUNTIME_RESUME_SUPPORTED" \
+        "$RUNTIME_SESSION_ID_KIND" \
+        "$RUNTIME_DIR/$RUNTIME_NAME/instructions.md"
+    done
+    ;;
   init) # init [name] [task] [--force]
     init_force=0
     init_name=""
@@ -660,15 +684,15 @@ case "$cmd" in
     tmux set-window-option -t "$w" main-pane-width "$width"
     tmux select-layout -t "$w" main-vertical
     ;;
-  register-leader) # register-leader <name> <pane> <cli> <session-id> [dir]
+  register-leader) # register-leader <name> <pane> <runtime> <session-id> [dir]
     [ "$#" -ge 4 ] && [ "$#" -le 5 ] ||
-      _die "register-leader requires name, pane, CLI, session ID, and optional directory"
+      _die "register-leader requires name, pane, runtime, session ID, and optional directory"
     _register_agent_session leader "$@"
     tmux select-pane -t "$2" -T "$1"
     ;;
-  record-agent-session) # record-agent-session <role> <name> <cli> <id> [dir]
+  record-agent-session) # record-agent-session <role> <name> <runtime> <id> [dir]
     [ "$#" -ge 4 ] && [ "$#" -le 5 ] ||
-      _die "record-agent-session requires role, name, CLI, session ID, and optional directory"
+      _die "record-agent-session requires role, name, runtime, session ID, and optional directory"
     agent_role="$1"
     agent_name="$2"
     agent_cli="$3"
@@ -690,7 +714,7 @@ case "$cmd" in
     _register_agent_session "$agent_role" "$agent_name" "$agent_pane" \
       "$agent_cli" "$agent_session_id" "$agent_dir"
     ;;
-  register | register-worker) # register-worker <name> <pane> [cli session-id [dir]]
+  register | register-worker) # register-worker <name> <pane> [runtime session-id [dir]]
     _validate_board_field "worker name" "$1"
     _validate_board_field "pane id" "$2"
     [ -z "$(_registered_pane "$1")" ] ||
@@ -704,7 +728,7 @@ case "$cmd" in
     fi
     if [ "$#" -gt 2 ]; then
       [ "$#" -ge 4 ] && [ "$#" -le 5 ] ||
-        _die "register-worker session metadata requires CLI, session ID, and optional directory"
+        _die "register-worker session metadata requires runtime, session ID, and optional directory"
       _register_agent_session worker "$@"
     fi
     tmux select-pane -t "$2" -T "$1"
@@ -776,6 +800,18 @@ case "$cmd" in
       old_pane old_state; do
       resume_dir=$(_agent_resume_workdir \
         "$role" "$name" "$registered_dir")
+      if ! _load_runtime "$cli"; then
+        printf '%s\t%s\t%s\t%s\t%s\tskipped\tmissing-runtime\t-\n' \
+          "$role" "$name" "$cli" "$session_id" "$resume_dir" \
+          >> "$resume_plan"
+        continue
+      fi
+      if [ "$RUNTIME_RESUME_SUPPORTED" != "yes" ]; then
+        printf '%s\t%s\t%s\t%s\t%s\tskipped\tunsupported-resume\t-\n' \
+          "$role" "$name" "$cli" "$session_id" "$resume_dir" \
+          >> "$resume_plan"
+        continue
+      fi
       if [ ! -d "$resume_dir" ]; then
         printf '%s\t%s\t%s\t%s\t%s\tskipped\tmissing-worktree\t-\n' \
           "$role" "$name" "$cli" "$session_id" "$resume_dir" \
@@ -1013,7 +1049,7 @@ case "$cmd" in
     ;;
   *)
     printf '%s\n' \
-      "usage: teamctl.sh [--team name] init <name> [task] [--force] | teams | ui <session> | layout <window> [main-width] | register-leader <name> <pane> <cli> <uuid> [dir] | register-worker <name> <pane> [<cli> <uuid> [dir]] | record-agent-session <role> <name> <cli> <uuid> [dir] | close | resume | worktree-register [--mr id] [--status status] [--dir path] | worktree-update [--mr id] [--status status] | worktree-board | dispatch <worker> <id> '<prompt>' | wait <timeout> <id>... | show-receipt <id> | idle | status | set-title [name] [task]" \
+      "usage: teamctl.sh [--team name] runtimes | init <name> [task] [--force] | teams | ui <session> | layout <window> [main-width] | register-leader <name> <pane> <runtime> <session-id> [dir] | register-worker <name> <pane> [<runtime> <session-id> [dir]] | record-agent-session <role> <name> <runtime> <session-id> [dir] | close | resume | worktree-register [--mr id] [--status status] [--dir path] | worktree-update [--mr id] [--status status] | worktree-board | dispatch <worker> <id> '<prompt>' | wait <timeout> <id>... | show-receipt <id> | idle | status | set-title [name] [task]" \
       >&2
     exit 1
     ;;
