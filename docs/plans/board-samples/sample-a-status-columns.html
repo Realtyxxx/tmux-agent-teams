@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>样例 A · 状态四列看板 — payments-refactor</title>
+<style>
+  /* ===== 语义 token（唯一颜色来源：diagram-design style-guide） ===== */
+  :root {
+    --paper: #f5f5f5;
+    --paper-2: #ececec;
+    --ink: #2d3142;
+    --muted: #4f5d75;
+    --soft: #7a8399;
+    --rule: rgba(45, 49, 66, 0.12);
+    --rule-solid: #bfc0c0;
+    --accent: #eb6c36;
+    --accent-tint: rgba(235, 108, 54, 0.08);
+    --link: #2e5aa8;
+    /* 派生（全部由上面 token 推导，深浅色各自定义） */
+    --card-bg: #ffffff;
+    --col-bg: rgba(45, 49, 66, 0.02);
+    --done-bg: rgba(45, 49, 66, 0.05);
+    --chip-ink-bg: #2d3142;
+    --chip-ink-fg: #f5f5f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #2d3142;
+      --paper-2: #393e53;
+      --ink: #f5f5f5;
+      --muted: #bfc0c0;
+      --soft: #8e98ac;
+      --rule: rgba(245, 245, 245, 0.12);
+      --rule-solid: rgba(191, 192, 192, 0.25);
+      --accent: #f08a59;
+      --accent-tint: rgba(240, 138, 89, 0.10);
+      --link: #6a95d8;
+      --card-bg: #393e53;
+      --col-bg: rgba(245, 245, 245, 0.03);
+      --done-bg: rgba(245, 245, 245, 0.06);
+      --chip-ink-bg: #f5f5f5;
+      --chip-ink-fg: #2d3142;
+    }
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Geist", "Inter", system-ui, sans-serif;
+    padding: 40px 44px 48px;
+    min-height: 100vh;
+  }
+  .mono { font-family: "Geist Mono", "SF Mono", ui-monospace, monospace; }
+
+  /* ===== 页头 ===== */
+  header { margin-bottom: 24px; }
+  .eyebrow {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--soft);
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-family: "Instrument Serif", Georgia, serif;
+    font-weight: 400;
+    font-size: 2rem;
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+  .header-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    align-items: center;
+  }
+  .hchip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--soft);
+  }
+  .hchip b {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--col-bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+
+  /* ===== 角色名册（泳道虽无，但角色是动态注册的，这里做图例条） ===== */
+  .roster {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 12px 16px;
+    margin-bottom: 28px;
+    background: var(--col-bg);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+  }
+  .roster-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .roster-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--soft);
+    border: 1px solid var(--rule);
+    background: var(--card-bg);
+    border-radius: 4px;
+    padding: 4px 10px;
+  }
+  .roster-item .rname {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .roster-item .rt {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 10px;
+    color: var(--soft);
+  }
+  .roster-item .rdot { color: var(--rule-solid); }
+  .badge-new {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border: 1px solid var(--rule-solid);
+    border-radius: 2px;
+    padding: 1px 5px;
+  }
+
+  /* ===== 四列 ===== */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .col {
+    background: var(--col-bg);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .col-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 10px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 12px;
+  }
+  .col-name { font-size: 13px; font-weight: 600; }
+  .col-key {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--soft);
+  }
+  .wip {
+    margin-left: auto;
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--muted);
+    border: 1px solid var(--rule-solid);
+    border-radius: 2px; /* rx=2 矩形，非 pill */
+    padding: 2px 7px;
+    background: var(--card-bg);
+  }
+
+  /* ===== 卡片 ===== */
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--rule-solid);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 12px;
+    transition: box-shadow 120ms ease;
+  }
+  .card:last-child { margin-bottom: 0; }
+  .card:hover { box-shadow: 0 2px 8px var(--rule); }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .tid {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.35;
+    margin-bottom: 8px;
+  }
+
+  /* 徽标：mono 小方标 */
+  .tag {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--soft);
+    border: 1px solid var(--rule-solid);
+    border-radius: 2px;
+    padding: 1px 6px;
+    margin-left: auto;
+  }
+  .tag + .tag { margin-left: 0; }
+  .tag-accent {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--accent-tint);
+  }
+
+  /* ===== lineage 角色芯片序列（本样例视觉重点） ===== */
+  .lineage {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .role {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    border-radius: 4px;
+    padding: 3px 8px;
+    color: var(--muted);
+    border: 1px solid var(--rule-solid);
+    background: transparent;
+  }
+  .role.current {
+    color: var(--chip-ink-fg);
+    background: var(--chip-ink-bg);
+    border-color: var(--chip-ink-bg);
+    font-weight: 600;
+  }
+  .lineage .arrow { color: var(--soft); font-size: 11px; }
+  .lineage-note {
+    font-size: 10px;
+    color: var(--soft);
+    margin-left: 2px;
+  }
+
+  .card-meta {
+    font-family: "Geist Mono", "SF Mono", ui-monospace, monospace;
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--soft);
+    word-break: break-all;
+  }
+  .card-meta .mr { color: var(--link); }
+  .card-note {
+    font-size: 11px;
+    color: var(--soft);
+    line-height: 1.5;
+  }
+
+  /* blocked 卡：accent 左竖条 + 虚线描边 + accent-tint 底（全页 accent 预算 1/2） */
+  .card.blocked {
+    position: relative;
+    background: var(--accent-tint);
+    border: 1px dashed var(--accent);
+    padding-left: 16px;
+  }
+  .card.blocked::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--accent);
+    border-radius: 6px 0 0 6px;
+  }
+
+  /* done 卡：低对比收灰 */
+  .card.done { background: var(--done-bg); }
+  .card.done h3 { color: var(--muted); font-weight: 500; }
+
+  footer {
+    margin-top: 28px;
+    font-size: 11px;
+    color: var(--soft);
+  }
+  footer .mono { font-size: 10px; }
+
+  @media (max-width: 960px) {
+    .board { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">team board · 样例 A · 状态四列</div>
+  <h1>payments-refactor</h1>
+  <div class="header-meta">
+    <span class="hchip">模式 <b>feature-mr</b></span>
+    <span class="hchip">tmux 会话 <b>team-payments</b></span>
+    <span class="hchip">流转来源 <b>flow.tsv</b></span>
+  </div>
+</header>
+
+<!-- 角色名册由 workers.tsv / agents.tsv 动态派生：新注册角色自动出现 -->
+<div class="roster">
+  <span class="roster-label">角色名册</span>
+  <span class="roster-item"><span class="rname">impl-a</span><span class="rdot">·</span><span class="rt">claude</span><span>实现</span></span>
+  <span class="roster-item"><span class="rname">impl-b</span><span class="rdot">·</span><span class="rt">codex</span><span>实现</span></span>
+  <span class="roster-item"><span class="rname">reviewer</span><span class="rdot">·</span><span class="rt">claude</span><span>评审/验证</span></span>
+  <span class="roster-item"><span class="rname">perf-analyst</span><span class="rdot">·</span><span class="rt">codex</span><span>性能分析 · 暂无任务</span><span class="badge-new">new</span></span>
+</div>
+
+<main class="board">
+
+  <!-- ============ todo ============ -->
+  <section class="col">
+    <div class="col-head">
+      <span class="col-name">待办</span>
+      <span class="col-key">todo</span>
+      <span class="wip">3</span>
+    </div>
+
+    <article class="card">
+      <div class="card-top"><span class="tid">T7</span></div>
+      <h3>对账单导出接口</h3>
+      <div class="card-note">契约已写 · 未派工</div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="tid">T8</span></div>
+      <h3>幂等键迁移脚本</h3>
+      <div class="card-note">契约已写 · 未派工</div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="tid">T3</span><span class="tag">rework</span></div>
+      <h3>结算规则引擎抽象</h3>
+      <div class="card-note">T3-verify 验证未通过，打回待重派</div>
+      <div class="card-meta">&larr; T3-verify · verdict:fail</div>
+    </article>
+  </section>
+
+  <!-- ============ doing ============ -->
+  <section class="col">
+    <div class="col-head">
+      <span class="col-name">进行中</span>
+      <span class="col-key">doing</span>
+      <span class="wip">2 / 3</span>
+    </div>
+
+    <article class="card">
+      <div class="card-top"><span class="tid">T5-verify</span><span class="tag">worktree:review</span></div>
+      <h3>验证退款路径改造</h3>
+      <!-- lineage 芯片序列：本样例视觉重点 -->
+      <div class="lineage">
+        <span class="role">impl-a</span>
+        <span class="arrow">&rarr;</span>
+        <span class="role current">reviewer</span>
+        <span class="lineage-note">流转轨迹</span>
+      </div>
+      <div class="card-meta">wt/T5 · feat/refund-path · <span class="mr">MR !41</span></div>
+    </article>
+
+    <article class="card">
+      <div class="card-top"><span class="tid">T6</span><span class="tag">working</span></div>
+      <h3>支付网关重试策略</h3>
+      <div class="lineage">
+        <span class="role current">impl-b</span>
+      </div>
+      <div class="card-meta">feat/gateway-retry</div>
+    </article>
+  </section>
+
+  <!-- ============ blocked ============ -->
+  <section class="col">
+    <div class="col-head">
+      <span class="col-name">受阻</span>
+      <span class="col-key">blocked</span>
+      <span class="wip">1</span>
+    </div>
+
+    <article class="card blocked">
+      <div class="card-top"><span class="tid">T4</span><span class="tag tag-accent">receipt:blocked</span></div>
+      <h3>账务快照压缩</h3>
+      <div class="lineage">
+        <span class="role current">impl-a</span>
+      </div>
+      <div class="card-meta">blocker: T2</div>
+    </article>
+  </section>
+
+  <!-- ============ done ============ -->
+  <section class="col">
+    <div class="col-head">
+      <span class="col-name">已完成</span>
+      <span class="col-key">done</span>
+      <span class="wip">3</span>
+    </div>
+
+    <article class="card done">
+      <div class="card-top"><span class="tid">T2</span><span class="tag">verdict:pass</span></div>
+      <h3>交易表分区改造</h3>
+      <div class="lineage">
+        <span class="role">impl-b</span>
+      </div>
+      <div class="card-meta"><span class="mr">MR !38</span> · merged</div>
+    </article>
+
+    <article class="card done">
+      <div class="card-top"><span class="tid">T3-verify</span><span class="tag tag-accent">verdict:fail</span></div>
+      <h3>验证分区改造</h3>
+      <div class="lineage">
+        <span class="role">reviewer</span>
+      </div>
+      <div class="card-meta">&rarr; T3 rework</div>
+    </article>
+
+    <article class="card done">
+      <div class="card-top"><span class="tid">T1</span><span class="tag">verdict:pass</span></div>
+      <h3>支付域建模</h3>
+      <!-- done 卡同样保留走过的角色轨迹 -->
+      <div class="lineage">
+        <span class="role">impl-a</span>
+        <span class="arrow">&rarr;</span>
+        <span class="role">reviewer</span>
+      </div>
+      <div class="card-meta">T1 &rarr; T1-verify · 轨迹完整</div>
+    </article>
+  </section>
+
+</main>
+
+<footer>
+  静态设计样例 · 假数据 mockup · 数据面向 <span class="mono">.teams/payments-refactor/</span>（board.tsv / receipts / worktrees.tsv / flow.tsv）
+</footer>
+
+</body>
+</html>
