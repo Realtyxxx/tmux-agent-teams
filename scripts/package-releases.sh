@@ -91,7 +91,7 @@ STANDARD_ARCHIVE=$(package_profile standard)
 AGY_ARCHIVE=$(package_profile with-agy)
 
 if tar -tzf "$STANDARD_ARCHIVE" |
-  grep -Eq 'tmux-agent-teams/runtimes/agy/|model-catalog.json'; then
+  grep -Eq 'tmux-agent-teams/runtimes/agy/'; then
   fail "standard archive contains agy-specific files"
 fi
 if tar -xOzf "$STANDARD_ARCHIVE" |
@@ -103,7 +103,7 @@ tar -tzf "$AGY_ARCHIVE" |
   grep -qx 'tmux-agent-teams/runtimes/agy/runtime.sh' ||
   fail "with-agy archive is missing its runtime"
 tar -tzf "$AGY_ARCHIVE" |
-  grep -qx 'tmux-agent-teams/runtimes/agy/model-catalog.json' ||
+  grep -qx 'tmux-agent-teams/runtimes/agy/models.yaml' ||
   fail "with-agy archive is missing its model catalog"
 
 while IFS= read -r archive_entry; do

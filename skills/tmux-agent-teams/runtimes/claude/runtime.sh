@@ -9,7 +9,7 @@ runtime_validate_session_id() {
 }
 
 runtime_full_access_command() {
-  printf '%s\n' "command claude --dangerously-skip-permissions"
+  printf '%s\n' "command claude --dangerously-skip-permissions --model opus"
 }
 
 runtime_build_resume_command() {

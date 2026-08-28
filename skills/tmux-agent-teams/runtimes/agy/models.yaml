@@ -1,0 +1,62 @@
+schema_version: 1
+runtime: agy
+refreshed_at: "2026-08-28T22:50:35+08:00"
+team_default_model: "Gemini 3.7 Flash (High)"
+refresh_policy: manual-only
+models:
+  - name: "Gemini 3.7 Flash (High)"
+    family: "Gemini 3.7 Flash"
+    effort: high
+    description: "High reasoning effort for complex tasks (Team Default)"
+  - name: "Gemini 3.7 Flash (Medium)"
+    family: "Gemini 3.7 Flash"
+    effort: medium
+    description: "Balanced reasoning effort"
+  - name: "Gemini 3.7 Flash (Low)"
+    family: "Gemini 3.7 Flash"
+    effort: low
+    description: "Low reasoning effort for fast responses"
+  - name: "Gemini 3.6 Flash (High)"
+    family: "Gemini 3.6 Flash"
+    effort: high
+    description: "High reasoning effort"
+  - name: "Gemini 3.6 Flash (Medium)"
+    family: "Gemini 3.6 Flash"
+    effort: medium
+    description: "Balanced reasoning effort"
+  - name: "Gemini 3.6 Flash (Low)"
+    family: "Gemini 3.6 Flash"
+    effort: low
+    description: "Low reasoning effort"
+  - name: "Gemini 3.5 Flash (High)"
+    family: "Gemini 3.5 Flash"
+    effort: high
+    description: "High reasoning effort"
+  - name: "Gemini 3.5 Flash (Medium)"
+    family: "Gemini 3.5 Flash"
+    effort: medium
+    description: "Balanced reasoning effort"
+  - name: "Gemini 3.5 Flash (Low)"
+    family: "Gemini 3.5 Flash"
+    effort: low
+    description: "Low reasoning effort"
+  - name: "Gemini 3.1 Pro (High)"
+    family: "Gemini 3.1 Pro"
+    effort: high
+    description: "Pro model with high reasoning effort"
+  - name: "Gemini 3.1 Pro (Low)"
+    family: "Gemini 3.1 Pro"
+    effort: low
+    description: "Pro model with low reasoning effort"
+  - name: "Claude Sonnet 4.6 (Thinking)"
+    family: "Claude"
+    effort: thinking
+    description: "Thinking mode with Sonnet 4.6"
+  - name: "Claude Opus 4.6 (Thinking)"
+    family: "Claude"
+    effort: thinking
+    description: "Thinking mode with Opus 4.6"
+  - name: "GPT-OSS 120B (Medium)"
+    family: "GPT-OSS"
+    effort: medium
+    description: "Open source 120B model"

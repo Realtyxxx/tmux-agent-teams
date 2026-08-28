@@ -3,11 +3,13 @@
 ## Launch
 
 ```bash
-command claude --dangerously-skip-permissions
+command claude --dangerously-skip-permissions --model opus
 ```
 
-Use `--model <model> --effort <level>` only when the user confirmed a
-launch-scoped override. Otherwise keep the CLI defaults.
+When no model is explicitly specified by the user, default to `--model opus`.
+Consult `models.yaml` for available models and supported effort levels.
+Use `--model <model> --effort <level>` when the user confirmed a
+launch-scoped override.
 
 Generate a UUID before launch and pass it with `--session-id <uuid>`. Record the
 same UUID in the Team agent registry. Resume uses `claude --resume <uuid>` and
