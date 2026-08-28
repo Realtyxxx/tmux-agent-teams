@@ -3,7 +3,7 @@
 ## Launch
 
 ```bash
-command agy --dangerously-skip-permissions
+command agy --dangerously-skip-permissions --model "Gemini 3.7 Flash (High)"
 ```
 
 When no model is explicitly specified by the user, default to `--model "Gemini 3.7 Flash (High)"`.

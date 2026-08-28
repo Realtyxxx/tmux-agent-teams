@@ -9,7 +9,7 @@ runtime_validate_session_id() {
 }
 
 runtime_full_access_command() {
-  printf '%s\n' "command agy --dangerously-skip-permissions"
+  printf '%s\n' 'command agy --dangerously-skip-permissions --model "Gemini 3.7 Flash (High)"'
 }
 
 runtime_build_resume_command() {
