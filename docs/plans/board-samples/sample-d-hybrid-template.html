@@ -859,6 +859,221 @@
         color: var(--soft);
         line-height: 1.6;
       }
+      /* ============ 任务详情抽屉（goalbuddy 式点击详情） ============ */
+      .detail-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.28);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+        z-index: 40;
+      }
+      .detail-backdrop.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .detail-drawer {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(460px, 94vw);
+        background: var(--paper);
+        border-left: 1px solid var(--rule-solid);
+        box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);
+        transform: translateX(102%);
+        transition: transform 0.2s ease;
+        z-index: 41;
+        display: flex;
+        flex-direction: column;
+      }
+      .detail-drawer.open {
+        transform: translateX(0);
+      }
+      .detail-head {
+        padding: 18px 20px 14px;
+        border-bottom: 1px solid var(--rule);
+        background: var(--paper-2);
+      }
+      .detail-head-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .detail-task-id {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--soft);
+        letter-spacing: 0.06em;
+      }
+      .detail-close {
+        border: 1px solid var(--rule-solid);
+        background: transparent;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 11px;
+        line-height: 1;
+        padding: 5px 8px;
+        border-radius: 3px;
+        cursor: pointer;
+      }
+      .detail-close:hover {
+        color: var(--ink);
+        border-color: var(--ink-25);
+      }
+      .detail-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 6px 0 8px;
+      }
+      .detail-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+      }
+      .state-chip {
+        font-family: var(--mono);
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        padding: 3px 7px;
+        border-radius: 2px;
+        border: 1px solid var(--ink-25);
+        color: var(--muted);
+      }
+      .state-chip.st-doing {
+        border-color: var(--link);
+        color: var(--link);
+        background: var(--link-tint);
+      }
+      .state-chip.st-blocked {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--accent-tint);
+      }
+      .state-chip.st-done {
+        background: var(--done-fill);
+      }
+      .detail-body {
+        overflow-y: auto;
+        padding: 16px 20px 28px;
+        flex: 1;
+      }
+      .detail-section {
+        margin-bottom: 18px;
+      }
+      .detail-text {
+        font-size: 12.5px;
+        color: var(--ink);
+        white-space: pre-wrap;
+        background: var(--cell);
+        border: 1px solid var(--rule);
+        border-radius: 4px;
+        padding: 10px 12px;
+        line-height: 1.6;
+      }
+      .detail-kv {
+        font-family: var(--mono);
+        font-size: 11px;
+        background: var(--cell);
+        border: 1px solid var(--rule);
+        border-radius: 4px;
+        padding: 10px 12px;
+        line-height: 1.9;
+        white-space: pre-wrap;
+      }
+      .detail-kv .k {
+        color: var(--soft);
+      }
+      .detail-empty {
+        font-size: 12px;
+        color: var(--soft);
+        font-style: italic;
+      }
+      .block-at-box {
+        border: 1px dashed var(--accent);
+        background: var(--accent-tint);
+        border-radius: 4px;
+        padding: 10px 12px;
+        font-size: 12.5px;
+      }
+      .block-at-box .why {
+        color: var(--muted);
+        margin-top: 4px;
+        font-size: 12px;
+      }
+      .task-link {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--link);
+        background: var(--link-tint);
+        border: 1px solid var(--link);
+        border-radius: 2px;
+        padding: 2px 6px;
+        cursor: pointer;
+        display: inline-block;
+      }
+      .task-link:hover {
+        filter: brightness(0.92);
+      }
+      .chain-list {
+        border-left: 2px solid var(--rule-solid);
+        margin-left: 6px;
+        padding-left: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .chain-node {
+        position: relative;
+        font-size: 12.5px;
+      }
+      .chain-node::before {
+        content: "";
+        position: absolute;
+        left: -19.5px;
+        top: 5px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--paper);
+        border: 2px solid var(--rule-solid);
+      }
+      .chain-node.current::before {
+        border-color: var(--link);
+        background: var(--link);
+      }
+      .chain-node.future::before {
+        border-style: dashed;
+      }
+      .chain-node .cn-head {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      .chain-node .cn-worker {
+        font-weight: 600;
+      }
+      .chain-node .cn-sub {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--soft);
+        margin-top: 1px;
+      }
+      .chain-node.future .cn-worker,
+      .chain-node.future .cn-sub {
+        color: var(--soft);
+        font-style: italic;
+      }
+      .role-chip-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
     </style>
   </head>
   <body>
@@ -977,6 +1192,24 @@
         </aside>
       </div>
 
+      <!-- ============ 任务详情抽屉 ============ -->
+      <div class="detail-backdrop" id="detailBackdrop"></div>
+      <aside class="detail-drawer" id="detailDrawer" aria-hidden="true">
+        <div class="detail-head">
+          <div class="detail-head-row">
+            <span class="detail-task-id" id="detailTaskId">-</span>
+            <button class="detail-close" id="detailCloseBtn" title="关闭 (Esc)">
+              ✕ ESC
+            </button>
+          </div>
+          <div class="detail-title" id="detailTitle">-</div>
+          <div class="detail-chips" id="detailChips"></div>
+        </div>
+        <div class="detail-body" id="detailBody">
+          <!-- 详情内容由 JS 渲染 -->
+        </div>
+      </aside>
+
       <!-- 页脚 -->
       <footer class="page-footer">
         <span
@@ -1033,6 +1266,8 @@
             {
               id: "T7",
               title: "对账单导出接口",
+              detail:
+                "从对账域读取月度账单，输出 CSV/JSON 双格式导出接口。\n验收：两种格式字段清单一致；支持分页与幂等重试。",
               column: "todo",
               owner: null,
               badges: [],
@@ -1046,6 +1281,8 @@
             {
               id: "T8",
               title: "幂等键迁移脚本",
+              detail:
+                "把历史订单幂等键迁移到 v2 格式。\n方法：双写窗口 + 校验脚本；验收：抽样 10k 条零差异。",
               column: "todo",
               owner: null,
               badges: [],
@@ -1059,6 +1296,8 @@
             {
               id: "T3",
               title: "流水表分区改造",
+              detail:
+                "流水表按月分区改造。T3-verify 判 fail 后退回返工：需修复分区键选择导致的写入热点。",
               column: "todo",
               owner: null,
               badges: ["rework"],
@@ -1076,6 +1315,8 @@
             {
               id: "T6",
               title: "支付网关重试策略",
+              detail:
+                "支付网关调用重试策略：指数退避 + 抖动，按错误码区分可重试/不可重试。\n验收：压测下成功率 ≥ 99.9%。",
               column: "doing",
               owner: "impl-b",
               badges: [],
@@ -1093,6 +1334,8 @@
             {
               id: "T5-verify",
               title: "验证退款路径改造",
+              detail:
+                "独立验证 T5 退款路径改造：核对退款状态机流转与对账一致性。\n输入：T5 工件的不透明路径（不读实现细节以外的内容）。",
               column: "doing",
               owner: "reviewer",
               badges: [],
@@ -1113,6 +1356,8 @@
             {
               id: "T4",
               title: "账务快照压缩",
+              detail:
+                "压缩历史账务快照存储，降低冷数据成本。\n依赖：T2 分区改造产出的新表结构。",
               column: "blocked",
               owner: "impl-a",
               badges: ["receipt:blocked"],
@@ -1128,6 +1373,7 @@
                 branch: "feat/snapshot-compress",
                 status: "working",
               },
+              blocked_since: 1756366920,
               lineage: {
                 chain: [{ task: "T4", worker: "impl-a" }],
                 source: "flow",
@@ -1136,6 +1382,8 @@
             {
               id: "T1",
               title: "支付域建模",
+              detail:
+                "支付域领域建模：聚合根/实体/值对象清单 + 事件风暴产物。",
               column: "done",
               owner: "impl-a",
               badges: [],
@@ -1158,6 +1406,8 @@
             {
               id: "T2",
               title: "交易表分区改造",
+              detail:
+                "交易表按 merchant_id 哈希分区。\n验收：目标查询 P99 延迟下降 50%。",
               column: "done",
               owner: "impl-b",
               badges: [],
@@ -1181,6 +1431,8 @@
             {
               id: "T3-verify",
               title: "验证分区改造",
+              detail:
+                "验证 T3 分区改造：检查分区裁剪命中率与热点分布。\n判定 fail，路由 rework 回 impl-a。",
               column: "done",
               owner: "reviewer",
               badges: ["verdict:fail"],
@@ -1387,8 +1639,7 @@
           }
 
           card.addEventListener("click", function (e) {
-            selectedTaskId = task.id;
-            renderAll(currentData);
+            openTaskDetail(task.id);
           });
 
           // 头部 ID 行
@@ -1954,7 +2205,338 @@
           renderHeader(data);
           renderBoard(data);
           renderSidebar(data);
+          renderDetailDrawer(data);
         }
+
+        /* ================= 任务详情抽屉（goalbuddy 式点击详情） ================= */
+        var detailTaskId = null;
+
+        var COLUMN_LABELS = {
+          todo: "待办 todo",
+          doing: "进行中 doing",
+          blocked: "受阻 blocked",
+          done: "已完成 done",
+        };
+        var NEXT_ROUTE_HINTS = {
+          verify: "验证 — 待 leader 派发独立 verify 任务给另一 worker",
+          rework: "返工 — 待 leader 回派实现 worker 修复",
+          deliver: "交付 — 待 leader 派发 delivery worker 产出用户工件",
+          await_user: "等待用户决策 — leader 已把该阻塞升级给用户",
+          none: "链路终点 — 无后续路由",
+        };
+
+        function findTaskById(data, id) {
+          var list = (data && data.tasks) || [];
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].id === id) return list[i];
+          }
+          return null;
+        }
+
+        function openTaskDetail(id) {
+          detailTaskId = id;
+          selectedTaskId = id; // 同步驱动右侧轨迹面板
+          renderAll(currentData);
+        }
+        function closeTaskDetail() {
+          detailTaskId = null;
+          renderAll(currentData);
+        }
+
+        function detailSection(parent, eyebrowText) {
+          var sec = createEl("div", "detail-section");
+          sec.appendChild(createEl("div", "eyebrow", eyebrowText));
+          parent.appendChild(sec);
+          return sec;
+        }
+
+        function appendKv(pre, key, value) {
+          var k = createEl("span", "k", key);
+          pre.appendChild(k);
+          pre.appendChild(document.createTextNode(" " + value + "\n"));
+        }
+
+        function taskLink(id, label) {
+          var a = createEl("span", "task-link", label || id);
+          a.addEventListener("click", function (e) {
+            e.stopPropagation();
+            openTaskDetail(id);
+          });
+          return a;
+        }
+
+        function renderDetailDrawer(data) {
+          var backdrop = document.getElementById("detailBackdrop");
+          var drawer = document.getElementById("detailDrawer");
+          var body = document.getElementById("detailBody");
+          if (!backdrop || !drawer || !body) return;
+
+          var task = detailTaskId ? findTaskById(data, detailTaskId) : null;
+          if (!task) {
+            drawer.classList.remove("open");
+            backdrop.classList.remove("show");
+            drawer.setAttribute("aria-hidden", "true");
+            return;
+          }
+          drawer.classList.add("open");
+          backdrop.classList.add("show");
+          drawer.setAttribute("aria-hidden", "false");
+
+          /* --- 头部 --- */
+          document.getElementById("detailTaskId").textContent =
+            task.id + " · tasks/" + task.id + ".md";
+          document.getElementById("detailTitle").textContent =
+            task.title || "(无标题)";
+          var chips = document.getElementById("detailChips");
+          clearNode(chips);
+          var stChip = createEl(
+            "span",
+            "state-chip st-" + task.column,
+            COLUMN_LABELS[task.column] || task.column,
+          );
+          chips.appendChild(stChip);
+          if (task.owner) {
+            var rosterRow = ((data && data.roster) || []).filter(function (r) {
+              return r.worker === task.owner;
+            })[0];
+            chips.appendChild(
+              createEl(
+                "span",
+                "state-chip",
+                "owner " +
+                  task.owner +
+                  (rosterRow && rosterRow.runtime
+                    ? " · " + rosterRow.runtime
+                    : ""),
+              ),
+            );
+          } else {
+            chips.appendChild(createEl("span", "state-chip", "未派工"));
+          }
+          var badges = task.badges || [];
+          for (var bi = 0; bi < badges.length; bi++) {
+            chips.appendChild(createBadge(badges[bi]));
+          }
+
+          /* --- 正文 --- */
+          clearNode(body);
+
+          /* 契约说明 */
+          var secDetail = detailSection(body, "契约说明 · contract");
+          if (task.detail) {
+            var dt = createEl("div", "detail-text");
+            dt.textContent = task.detail;
+            secDetail.appendChild(dt);
+          } else {
+            secDetail.appendChild(
+              createEl(
+                "div",
+                "detail-empty",
+                "契约摘要不可用（tasks/" + task.id + ".md 未提供正文）",
+              ),
+            );
+          }
+
+          /* block at（仅受阻时） */
+          var blockerId =
+            task.receipt &&
+            task.receipt.blocker &&
+            task.receipt.blocker !== "none"
+              ? task.receipt.blocker
+              : null;
+          if (task.column === "blocked" || blockerId) {
+            var secBlock = detailSection(body, "block at · 阻塞信息");
+            var box = createEl("div", "block-at-box");
+            var line1 = createEl("div", null, "");
+            line1.appendChild(document.createTextNode("阻塞于 "));
+            if (blockerId) {
+              var blockerTask = findTaskById(data, blockerId);
+              line1.appendChild(
+                blockerTask
+                  ? taskLink(blockerId)
+                  : createEl("span", "mono", blockerId),
+              );
+              if (blockerTask) {
+                line1.appendChild(
+                  document.createTextNode(
+                    " 「" +
+                      (blockerTask.title || "") +
+                      "」（" +
+                      (COLUMN_LABELS[blockerTask.column] ||
+                        blockerTask.column) +
+                      "）",
+                  ),
+                );
+              }
+            } else {
+              line1.appendChild(
+                document.createTextNode("（worktree 状态 blocked，回执未报阻塞项）"),
+              );
+            }
+            box.appendChild(line1);
+            if (task.blocked_since) {
+              box.appendChild(
+                createEl(
+                  "div",
+                  "why",
+                  "阻塞开始于 " + formatTime(task.blocked_since),
+                ),
+              );
+            }
+            if (blockerId) {
+              var blockerTask2 = findTaskById(data, blockerId);
+              if (blockerTask2 && blockerTask2.column === "done") {
+                box.appendChild(
+                  createEl(
+                    "div",
+                    "why",
+                    "注意：阻塞项已完成 — 阻塞条件可能已消除，等待 leader 路由。",
+                  ),
+                );
+              }
+            }
+            secBlock.appendChild(box);
+          }
+
+          /* 回执 */
+          var secReceipt = detailSection(body, "回执 · receipts/" + task.id + ".md");
+          if (task.receipt) {
+            var pre = createEl("div", "detail-kv");
+            appendKv(pre, "status  :", task.receipt.status || "-");
+            appendKv(pre, "verdict :", task.receipt.verdict || "-");
+            appendKv(pre, "blocker :", task.receipt.blocker || "-");
+            appendKv(pre, "next    :", task.receipt.next || "-");
+            appendKv(pre, "artifact:", task.receipt.artifact || "-");
+            pre.appendChild(createEl("span", "k", "DONE " + task.id));
+            secReceipt.appendChild(pre);
+          } else {
+            secReceipt.appendChild(
+              createEl("div", "detail-empty", "尚无回执（任务未完成或未派工）"),
+            );
+          }
+
+          /* worktree */
+          if (task.worktree) {
+            var secWt = detailSection(body, "worktree · worktrees.tsv");
+            var wt = createEl("div", "detail-kv");
+            appendKv(wt, "branch  :", task.worktree.branch || "-");
+            appendKv(wt, "MR      :", task.worktree.mr || "-");
+            appendKv(wt, "status  :", task.worktree.status || "-");
+            secWt.appendChild(wt);
+          }
+
+          /* 执行链路：上游流转 → 当前 → 下游路由 */
+          var secChain = detailSection(body, "执行链路 · 前后关系");
+          var chainWrap = createEl("div", "chain-list");
+          var chain = (task.lineage && task.lineage.chain) || [];
+          for (var ci = 0; ci < chain.length; ci++) {
+            var hop = chain[ci];
+            var isCurrent = hop.task === task.id;
+            var node = createEl(
+              "div",
+              "chain-node" + (isCurrent ? " current" : ""),
+            );
+            var head = createEl("div", "cn-head");
+            head.appendChild(createEl("span", "cn-worker", hop.worker || "?"));
+            var hopTask = findTaskById(data, hop.task);
+            if (hopTask && hop.task !== task.id) {
+              head.appendChild(taskLink(hop.task));
+            } else {
+              head.appendChild(createEl("span", "detail-task-id", hop.task));
+            }
+            node.appendChild(head);
+            var subParts = [];
+            if (hopTask) {
+              subParts.push(COLUMN_LABELS[hopTask.column] || hopTask.column);
+              if (hopTask.receipt && hopTask.receipt.verdict &&
+                  hopTask.receipt.verdict !== "unverified" &&
+                  hopTask.receipt.verdict !== "not_applicable") {
+                subParts.push("verdict " + hopTask.receipt.verdict);
+              }
+            }
+            if (isCurrent) subParts.push("当前任务");
+            if (subParts.length) {
+              node.appendChild(createEl("div", "cn-sub", subParts.join(" · ")));
+            }
+            chainWrap.appendChild(node);
+          }
+          /* 下游：回执 next 路由预告 */
+          if (task.receipt && task.receipt.next && task.receipt.next !== "none") {
+            var futureNode = createEl("div", "chain-node future");
+            var fHead = createEl("div", "cn-head");
+            fHead.appendChild(
+              createEl("span", "cn-worker", "next: " + task.receipt.next),
+            );
+            futureNode.appendChild(fHead);
+            futureNode.appendChild(
+              createEl(
+                "div",
+                "cn-sub",
+                NEXT_ROUTE_HINTS[task.receipt.next] || "",
+              ),
+            );
+            chainWrap.appendChild(futureNode);
+          }
+          secChain.appendChild(chainWrap);
+          if (task.lineage && task.lineage.source === "heuristic") {
+            secChain.appendChild(
+              createEl(
+                "div",
+                "detail-empty",
+                "lineage 来源：heuristic（flow.tsv 缺失，按 id 前缀弱恢复）",
+              ),
+            );
+          }
+
+          /* 被本任务阻塞的下游任务 */
+          var blockedByMe = ((data && data.tasks) || []).filter(function (t) {
+            return (
+              t.id !== task.id &&
+              t.receipt &&
+              t.receipt.blocker === task.id
+            );
+          });
+          if (blockedByMe.length > 0) {
+            var secDown = detailSection(body, "阻塞了以下任务");
+            var row = createEl("div", "role-chip-row");
+            for (var di = 0; di < blockedByMe.length; di++) {
+              row.appendChild(taskLink(blockedByMe[di].id));
+            }
+            secDown.appendChild(row);
+          }
+
+          /* 走过的角色 */
+          var seenWorkers = [];
+          for (var wi = 0; wi < chain.length; wi++) {
+            var w = chain[wi].worker;
+            if (w && seenWorkers.indexOf(w) === -1) seenWorkers.push(w);
+          }
+          if (seenWorkers.length > 0) {
+            var secRoles = detailSection(body, "走过的角色");
+            var roleRow = createEl("div", "role-chip-row");
+            for (var ri = 0; ri < seenWorkers.length; ri++) {
+              roleRow.appendChild(
+                createEl(
+                  "span",
+                  "hop-chip" +
+                    (ri === seenWorkers.length - 1 ? " current" : ""),
+                  seenWorkers[ri],
+                ),
+              );
+            }
+            secRoles.appendChild(roleRow);
+          }
+        }
+
+        document
+          .getElementById("detailCloseBtn")
+          .addEventListener("click", closeTaskDetail);
+        document
+          .getElementById("detailBackdrop")
+          .addEventListener("click", closeTaskDetail);
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && detailTaskId) closeTaskDetail();
+        });
 
         /* ================= API 交互与轮询 ================= */
         function fetchTeamsList() {
