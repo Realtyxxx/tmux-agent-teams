@@ -328,9 +328,12 @@ interactive zsh array behavior.
 
 ## Team Board
 
-The board is a Leader-visible control-plane surface served from
-`skills/tmux-agent-teams/board/`. Run it with the packaged sandbox launcher so
-team data is mounted read-only; the sandbox MUST exclude `artifacts/` entirely.
+The board is a Leader-visible control-plane surface. Visualize it using the
+standalone `agent-board` skill:
+
+```bash
+~/.agents/skills/agent-board/board/run-sandboxed.sh --root "$TEAM_DIR" --adapter teams --port 8737
+```
 
 ## Worktree Board Protocol
 
