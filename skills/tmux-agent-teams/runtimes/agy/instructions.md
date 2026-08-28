@@ -6,7 +6,8 @@
 command agy --dangerously-skip-permissions
 ```
 
-Select models only from `model-catalog.json`. Use `--model "<exact name>"` for a
+When no model is explicitly specified by the user, default to `--model "Gemini 3.7 Flash (High)"`.
+Select models from `models.yaml`. Use `--model "<exact name>"` for a
 launch-scoped override. Model-cache refresh remains manual and requires an
 explicit user request.
 

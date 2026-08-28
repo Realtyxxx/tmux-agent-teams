@@ -1,0 +1,32 @@
+schema_version: 1
+runtime: claude
+refreshed_at: "2026-08-28T22:50:35+08:00"
+team_default_model: "opus"
+team_default_effort: null
+supported_effort_levels:
+  - low
+  - medium
+  - high
+  - xhigh
+  - max
+models:
+  - alias: "opus"
+    name: "opus"
+    full_name: "claude-opus-4-6"
+    display_name: "Claude Opus"
+    description: "High-capability deep reasoning model (Team Default)"
+  - alias: "opus[1m]"
+    name: "opus[1m]"
+    full_name: "claude-opus-4-6-1m"
+    display_name: "Claude Opus (1M context)"
+    description: "1M context window deep reasoning model"
+  - alias: "fable"
+    name: "fable"
+    full_name: "claude-fable-5"
+    display_name: "Claude Fable 5"
+    description: "Latest fast agentic model"
+  - alias: "sonnet"
+    name: "sonnet"
+    full_name: "claude-sonnet-4-6"
+    display_name: "Claude Sonnet"
+    description: "Balanced agentic coding model"

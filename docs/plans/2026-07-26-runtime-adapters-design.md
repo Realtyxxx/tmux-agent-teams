@@ -19,14 +19,16 @@ skills/tmux-agent-teams/
 ├── runtimes/
 │   ├── claude/
 │   │   ├── runtime.sh
-│   │   └── instructions.md
+│   │   ├── instructions.md
+│   │   └── models.yaml
 │   ├── codex/
 │   │   ├── runtime.sh
-│   │   └── instructions.md
+│   │   ├── instructions.md
+│   │   └── models.yaml
 │   └── agy/
 │       ├── runtime.sh
 │       ├── instructions.md
-│       └── model-catalog.json
+│       └── models.yaml
 └── worker/
     └── SKILL.md
 

@@ -58,14 +58,14 @@ AGY_ARCHIVE="$OUTPUT_DIR/tmux-agent-teams-with-agy-$COMMIT.tar.gz"
 ) || fail "release checksums did not validate"
 
 if tar -tzf "$STANDARD_ARCHIVE" | grep -Eq \
-  'tmux-agent-teams/runtimes/agy/|model-catalog.json'; then
+  'tmux-agent-teams/runtimes/agy/'; then
   fail "standard archive contains agy-specific files"
 fi
 tar -tzf "$AGY_ARCHIVE" |
   grep -qx 'tmux-agent-teams/runtimes/agy/runtime.sh' ||
   fail "with-agy archive is missing its runtime"
 tar -tzf "$AGY_ARCHIVE" |
-  grep -qx 'tmux-agent-teams/runtimes/agy/model-catalog.json' ||
+  grep -qx 'tmux-agent-teams/runtimes/agy/models.yaml' ||
   fail "with-agy archive is missing its model catalog"
 
 tar -xzf "$STANDARD_ARCHIVE" -C "$STANDARD_EXTRACT"

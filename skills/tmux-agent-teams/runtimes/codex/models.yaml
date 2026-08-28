@@ -1,0 +1,76 @@
+schema_version: 1
+runtime: codex
+refreshed_at: "2026-08-28T22:50:35+08:00"
+team_default_model: "gpt-5.6-sol"
+models:
+  - slug: "gpt-5.6-sol"
+    display_name: "GPT-5.6-Sol"
+    default_reasoning_level: "low"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
+      - ultra
+  - slug: "gpt-5.6-terra"
+    display_name: "GPT-5.6-Terra"
+    default_reasoning_level: "medium"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
+      - ultra
+  - slug: "gpt-5.6-luna"
+    display_name: "GPT-5.6-Luna"
+    default_reasoning_level: "medium"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
+  - slug: "gpt-reserve"
+    display_name: "GPT-Reserve"
+    default_reasoning_level: "medium"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
+  - slug: "gpt-5.5"
+    display_name: "GPT-5.5"
+    default_reasoning_level: "medium"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+  - slug: "gpt-5.4"
+    display_name: "GPT-5.4"
+    default_reasoning_level: "medium"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+  - slug: "gpt-5.4-mini"
+    display_name: "GPT-5.4-Mini"
+    default_reasoning_level: "medium"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+  - slug: "codex-auto-review"
+    display_name: "Codex Auto Review"
+    default_reasoning_level: "medium"
+    supported_reasoning_levels:
+      - low
+      - medium
+      - high
+      - xhigh
+      - max
