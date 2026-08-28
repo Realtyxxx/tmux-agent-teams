@@ -360,12 +360,14 @@ b200 走 rsync + 本地 `node bin/install.js --force`（private 仓库，b200 �
    `serve.py` 的聚合逻辑原样变成 `adapters/tmux_teams.py`。
 3. 新写 `adapters/native.py` + `miniyaml.py` + 两套 examples。
 4. `index.html` 以 sample-d 为基线（含详情抽屉），字段改吃 §4 核心契约。
-5. tmux-agent-teams 侧：**删掉 `board/` 目录**，`SKILL.md` 保留一段指针
+5. `board-api-contract.md` 头部标注"已由本文件 §4 取代"，避免后续会话把旧契约
+   （`roster`/`receipts_feed`/teams 专有字段）当成权威；两端实现一律以 §4 为准。
+6. tmux-agent-teams 侧：**删掉 `board/` 目录**，`SKILL.md` 保留一段指针
    （"看板见 agent-board skill，用 `--adapter tmux-agent-teams --root .teams/`"）；
    `tests/board-sandbox.sh` 随代码迁走。
-6. **留在 tmux-agent-teams 的**：`flow.tsv` + `dispatch --parent` + `tests/teamctl-flow-lineage.sh`
+7. **留在 tmux-agent-teams 的**：`flow.tsv` + `dispatch --parent` + `tests/teamctl-flow-lineage.sh`
    ——这是团队协议本身的扩展，不是看板的一部分，看板只是它的消费者。
-7. `docs/plans/board-samples/` 四个样例留在本仓库当设计存档，不迁。
+8. `docs/plans/board-samples/` 四个样例留在本仓库当设计存档，不迁。
 
 ---
 
