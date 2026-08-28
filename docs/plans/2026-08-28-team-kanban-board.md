@@ -1,7 +1,12 @@
 # Team 级别工作任务看板（Web）设计计划
 
 日期：2026-08-28
-状态：待用户选定样例方向（3 个样例图见 `docs/plans/board-samples/`）
+状态：**已选型，进入实现阶段**（2026-08-28 用户决策）
+选型结论：以样例 B（角色泳道，行=动态角色、列=四状态）为主骨架，融合样例 C 的两个模块：
+① "需要 Leader 决策"焦点面板（blocked 任务回执字段 + 路由建议按钮组）；
+② 右侧"回执流"（show_receipt 白名单字段等宽呈现）+ 选中任务的角色轨迹时间线。
+样例 A 落选。3 个样例图存档于 `docs/plans/board-samples/`。
+实现阶段 worker 分工用异构 runtime：claude(opus5) / codex(gpt-5.6-sol) / agy(gemini-3.7-flash)。
 参考：[goalbuddy](https://github.com/tolibear/goalbuddy)（local live board 形态）、
 diagram-design skill（视觉语言：kanban 类型规范 + style-guide token 体系）
 

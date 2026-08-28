@@ -72,6 +72,7 @@ unverified.
 | Work artifact  | `$TEAM_DIR/artifacts/<id>.md` | Worker   | Other assigned workers   | Findings, code review, synthesis  |
 | Receipt        | `$TEAM_DIR/receipts/<id>.md`  | Worker   | Leader through `teamctl` | Bounded status metadata           |
 | Task board     | `$TEAM_DIR/board.tsv`         | Helper   | Leader                   | Assignment and completion state   |
+| Flow lineage   | `$TEAM_DIR/flow.tsv`          | Helper   | Leader and board service | Task parent and role trajectory   |
 | Worktree board | `$TEAM_DIR/worktrees.tsv`     | Worker   | Leader and workers       | Path, branch, MR, and state       |
 | Agent registry | `$TEAM_DIR/agents.tsv`        | Leader   | Lifecycle helper         | Runtime session IDs and work dirs |
 | Resume report  | `$TEAM_DIR/resume-report.tsv` | Helper   | Leader and user          | Resumed and skipped agent rows    |
@@ -280,6 +281,9 @@ flowchart LR
    The helper automatically requires the worker to read the secondary skill and
    appends the artifact/receipt contract.
 
+   For verify, rework, or other handoffs, append `--parent <prior-task-id>` so
+   `flow.tsv` records the lineage; omit it only for a root task.
+
 6. Keep one in-flight task per worker.
 7. Wait only on control receipts:
 
@@ -312,7 +316,7 @@ interactive zsh array behavior.
 | `record-agent-session <role> <name> <runtime> <id> ...` | Add session metadata after pane bootstrap     |
 | `close`                                                 | Persist state and close the team tmux session |
 | `resume`                                                | Resume recorded IDs and report skipped agents |
-| `dispatch <worker> <id> '<one-line prompt>'`            | Inject worker skill and output contract       |
+| `dispatch <worker> <id> '<prompt>' [--parent <id>]`     | Inject contract and record task lineage       |
 | `wait <timeout-s> <id>...`                              | Poll receipts without reading artifacts       |
 | `show-receipt <id>`                                     | Print validated control metadata              |
 | `idle`                                                  | List workers without an in-flight task        |
@@ -321,6 +325,12 @@ interactive zsh array behavior.
 | `worktree-update [--mr id] [--status state]`            | Append the calling Worker's new state         |
 | `worktree-board`                                        | Show latest worktree control metadata         |
 | `set-title [name] [task]`                               | Update the team window title                  |
+
+## Team Board
+
+The board is a Leader-visible control-plane surface served from
+`skills/tmux-agent-teams/board/`. Run it with the packaged sandbox launcher so
+team data is mounted read-only; the sandbox MUST exclude `artifacts/` entirely.
 
 ## Worktree Board Protocol
 

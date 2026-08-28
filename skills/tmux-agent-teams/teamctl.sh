@@ -83,6 +83,7 @@ RUNTIME_DIR="$SCRIPT_DIR/runtimes"
 REG="$TEAM_DIR/workers.tsv"
 AGENTS="$TEAM_DIR/agents.tsv"
 BOARD="$TEAM_DIR/board.tsv"
+FLOW="$TEAM_DIR/flow.tsv"
 WORKTREE_BOARD="$TEAM_DIR/worktrees.tsv"
 WORKTREE_LOCK="$TEAM_DIR/.worktrees.lock"
 ARTIFACTS="$TEAM_DIR/artifacts"
@@ -634,7 +635,8 @@ case "$cmd" in
     # an empty control directory first, but an initialized team is never
     # silently replaced.
     if [ "$init_force" -eq 0 ]; then
-      for existing in "$TEAM_META" "$REG" "$BOARD" "$WORKTREE_BOARD"; do
+      for existing in \
+        "$TEAM_META" "$REG" "$BOARD" "$FLOW" "$WORKTREE_BOARD"; do
         [ -e "$existing" ] &&
           _die "team already exists: $TEAM_DIR (pass --force to reset)"
       done
@@ -643,6 +645,7 @@ case "$cmd" in
     : > "$REG"
     : > "$AGENTS"
     : > "$BOARD"
+    : > "$FLOW"
     : > "$WORKTREE_BOARD"
     # A reset team must not inherit the previous team's frozen mode.
     [ -e "$TEAM_DIR/mode.md" ] && unlink "$TEAM_DIR/mode.md"
@@ -973,10 +976,28 @@ case "$cmd" in
     printf 'WORKER\tPANE_ID\tMR_ID\tWORKTREE_DIR\tBRANCH\tSTATUS\n'
     _latest_worktree_rows
     ;;
-  dispatch) # dispatch <worker> <task-id> <one-line-prompt>
+  dispatch) # dispatch <worker> <task-id> <one-line-prompt> [--parent <id>]
     name="$1" id="$2" prompt="$3"
+    shift 3
+    parent="-"
+    parent_set=0
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --parent)
+          [ "$#" -ge 2 ] || _die "missing value for --parent"
+          [ "$parent_set" -eq 0 ] || _die "duplicate dispatch option: --parent"
+          parent="$2"
+          parent_set=1
+          shift 2
+          ;;
+        *) _die "unknown dispatch option: $1" ;;
+      esac
+    done
     mode_contract=""
     valid_task_id "$id" || _die "invalid task id: $id"
+    if [ "$parent_set" -eq 1 ]; then
+      valid_task_id "$parent" || _die "invalid parent task id: $parent"
+    fi
     [ -f "$WORKER_SKILL" ] || _die "missing worker skill: $WORKER_SKILL"
     if [[ "$prompt" == *$'\n'* ]]; then
       _die "dispatch prompt must be one physical line"
@@ -993,6 +1014,8 @@ case "$cmd" in
     sleep 0.5
     tmux send-keys -t "$pane" Enter
     printf '%s\t%s\n' "$id" "$name" >> "$BOARD"
+    printf '%s\t%s\t%s\t%s\n' \
+      "$(date +%s)" "$id" "$name" "$parent" >> "$FLOW"
     ;;
   wait) # wait <timeout-s> <task-id>... — receipts only
     end=$((SECONDS + $1))
@@ -1049,7 +1072,7 @@ case "$cmd" in
     ;;
   *)
     printf '%s\n' \
-      "usage: teamctl.sh [--team name] runtimes | init <name> [task] [--force] | teams | ui <session> | layout <window> [main-width] | register-leader <name> <pane> <runtime> <session-id> [dir] | register-worker <name> <pane> [<runtime> <session-id> [dir]] | record-agent-session <role> <name> <runtime> <session-id> [dir] | close | resume | worktree-register [--mr id] [--status status] [--dir path] | worktree-update [--mr id] [--status status] | worktree-board | dispatch <worker> <id> '<prompt>' | wait <timeout> <id>... | show-receipt <id> | idle | status | set-title [name] [task]" \
+      "usage: teamctl.sh [--team name] runtimes | init <name> [task] [--force] | teams | ui <session> | layout <window> [main-width] | register-leader <name> <pane> <runtime> <session-id> [dir] | register-worker <name> <pane> [<runtime> <session-id> [dir]] | record-agent-session <role> <name> <runtime> <session-id> [dir] | close | resume | worktree-register [--mr id] [--status status] [--dir path] | worktree-update [--mr id] [--status status] | worktree-board | dispatch <worker> <id> '<prompt>' [--parent <id>] | wait <timeout> <id>... | show-receipt <id> | idle | status | set-title [name] [task]" \
       >&2
     exit 1
     ;;
