@@ -86,11 +86,27 @@ npx skills add Realtyxxx/tmux-agent-teams \
   --agent claude-code
 ```
 
+## Optional Task Board
+
+`.teams/<team-name>/` control files (`board.tsv`, `flow.tsv`, `worktrees.tsv`,
+receipts) are the board; `teamctl.sh status`, `worktree-board`, and
+`show-receipt` read them directly with no extra dependency.
+
+For a graphical view, install the separate
+[`agent-board`](https://github.com/Realtyxxx/agent-board-skill) skill — it is
+not bundled with either release profile:
+
+```bash
+git clone https://github.com/Realtyxxx/agent-board-skill
+node agent-board-skill/bin/install.js --force
+```
+
 ## Requirements
 
 - Bash
 - tmux
 - At least one supported agent CLI
+- Optional: the `agent-board` skill, only for the graphical task board
 
 ## Security
 
