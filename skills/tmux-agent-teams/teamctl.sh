@@ -997,6 +997,13 @@ case "$cmd" in
     valid_task_id "$id" || _die "invalid task id: $id"
     if [ "$parent_set" -eq 1 ]; then
       valid_task_id "$parent" || _die "invalid parent task id: $parent"
+      [ "$parent" != "$id" ] || _die "task cannot be its own parent: $id"
+      # A parent must already own a board row, so lineage cannot name a task
+      # that was never dispatched.
+      awk -F'\t' -v p="$parent" \
+        '$1 == p { found = 1; exit } END { exit !found }' \
+        "$BOARD" 2>/dev/null ||
+        _die "unknown parent task id: $parent"
     fi
     [ -f "$WORKER_SKILL" ] || _die "missing worker skill: $WORKER_SKILL"
     if [[ "$prompt" == *$'\n'* ]]; then

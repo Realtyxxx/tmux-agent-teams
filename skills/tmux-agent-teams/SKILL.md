@@ -282,7 +282,8 @@ flowchart LR
    appends the artifact/receipt contract.
 
    For verify, rework, or other handoffs, append `--parent <prior-task-id>` so
-   `flow.tsv` records the lineage; omit it only for a root task.
+   `flow.tsv` records the lineage; omit it only for a root task. The parent must
+   be a task already dispatched on this board and cannot be the task itself.
 
 6. Keep one in-flight task per worker.
 7. Wait only on control receipts:
@@ -328,11 +329,26 @@ interactive zsh array behavior.
 
 ## Team Board
 
-The board is a Leader-visible control-plane surface. Visualize it using the
-standalone `agent-board` skill:
+`board.tsv`, `flow.tsv`, `worktrees.tsv`, and the receipts are the
+Leader-visible board; `status`, `worktree-board`, and `show-receipt` read them
+directly.
+
+For graphical rendering, the separate `agent-board` skill is optional and not
+bundled here. Discover it before launching:
 
 ```bash
-~/.agents/skills/agent-board/board/run-sandboxed.sh --root "$TEAM_DIR" --adapter teams --port 8737
+BOARD_SKILL=""
+for root in ~/.agents/skills ~/.claude/skills ~/.codex/skills; do
+  if [ -x "$root/agent-board/board/run-sandboxed.sh" ]; then
+    BOARD_SKILL="$root/agent-board/board/run-sandboxed.sh"
+    break
+  fi
+done
+if [ -n "$BOARD_SKILL" ]; then
+  "$BOARD_SKILL" --root "$TEAM_DIR" --adapter teams --port 8737
+else
+  echo "agent-board skill not installed; install Realtyxxx/agent-board-skill to render the board"
+fi
 ```
 
 ## Worktree Board Protocol

@@ -78,6 +78,32 @@ esac
 [ "$(wc -l < "$TEAM_DIR/flow.tsv")" = "$FLOW_LINES" ] ||
   fail "invalid parent dispatch changed flow.tsv"
 
+if OUTPUT=$("$TEAMCTL" dispatch "worker-a" "typo-child" "Unknown parent." \
+  --parent "root-taks" 2>&1); then
+  fail "dispatch accepted a parent that was never dispatched"
+fi
+case "$OUTPUT" in
+  *"unknown parent task id: root-taks"*) ;;
+  *) fail "unknown parent task id was not reported: $OUTPUT" ;;
+esac
+[ "$(wc -l < "$TEAM_DIR/board.tsv")" = "$BOARD_LINES" ] ||
+  fail "unknown parent dispatch changed board.tsv"
+[ "$(wc -l < "$TEAM_DIR/flow.tsv")" = "$FLOW_LINES" ] ||
+  fail "unknown parent dispatch changed flow.tsv"
+
+if OUTPUT=$("$TEAMCTL" dispatch "worker-a" "self-child" "Self parent." \
+  --parent "self-child" 2>&1); then
+  fail "dispatch accepted a task naming itself as its parent"
+fi
+case "$OUTPUT" in
+  *"task cannot be its own parent: self-child"*) ;;
+  *) fail "self parent task id was not reported: $OUTPUT" ;;
+esac
+[ "$(wc -l < "$TEAM_DIR/board.tsv")" = "$BOARD_LINES" ] ||
+  fail "self parent dispatch changed board.tsv"
+[ "$(wc -l < "$TEAM_DIR/flow.tsv")" = "$FLOW_LINES" ] ||
+  fail "self parent dispatch changed flow.tsv"
+
 cat > "$TEAM_DIR/receipts/root-task.md" <<EOF
 task_id: root-task
 worker: worker-a
@@ -98,4 +124,4 @@ esac
 [ "$("$TEAMCTL" idle)" = "worker-a" ] ||
   fail "idle no longer reads the existing board format"
 
-printf 'PASS: dispatch records optional flow lineage without changing board readers\n'
+printf 'PASS: dispatch records validated flow lineage without changing board readers\n'
